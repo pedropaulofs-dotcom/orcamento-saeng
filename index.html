@@ -1,0 +1,2396 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SIOB-RFB v15.1 | Orçamentação e Cronograma SINAPI - Lei 14.133/2021</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+  <!-- Biblioteca Pako para comprimir/descomprimir GZIP (reduz de >25MB para ~3MB) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+  <style>
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: #f8fafc;
+      color: #0f172a;
+    }
+    .cmd-input:focus {
+      outline: none;
+      border-color: #2563eb;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+    }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- POP-UP FLUTUANTE AO PASSAR O MOUSE EM COMPOSIÇÃO AUXILIAR -->
+  <div id="popupSubcomposicao" class="fixed hidden z-50 bg-white border-2 border-blue-600 rounded-xl shadow-2xl p-3.5 w-[490px] pointer-events-none text-xs"></div>
+
+  <!-- CABEÇALHO CLEAN -->
+  <header class="bg-white border-b border-slate-200 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-2xs">
+    <div class="flex items-center gap-2.5">
+      <div class="bg-blue-700 text-white font-extrabold px-2.5 py-1.5 rounded text-xs tracking-wider">SAENG / 2ª RF</div>
+      <div>
+        <h1 class="text-sm sm:text-base font-bold text-slate-900 leading-tight">Sistema Analítico de Orçamentação e Cronograma (v15.1)</h1>
+        <p id="statusGeralTopo" class="text-[11px] text-amber-700 font-medium">⏳ Verificando banco de dados salvo...</p>
+      </div>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 text-xs">
+      <div>
+        <label class="block text-slate-500 text-[10px] font-bold uppercase">UF (2ª RF Prioritária)</label>
+        <select id="cfgUF" onchange="aoTrocarUFNoTopo()" class="bg-white text-blue-800 border border-blue-400 rounded px-2 py-1 font-extrabold">
+          <option value="" disabled selected>— UF —</option>
+          <optgroup label="2ª Região Fiscal (Norte)">
+            <option value="AC">AC - Acre</option>
+            <option value="AM">AM - Amazonas</option>
+            <option value="AP">AP - Amapá</option>
+            <option value="PA">PA - Pará</option>
+            <option value="RO">RO - Rondônia</option>
+            <option value="RR">RR - Roraima</option>
+          </optgroup>
+          <optgroup label="Demais Estados Norte">
+            <option value="TO">TO - Tocantins</option>
+          </optgroup>
+          <optgroup label="Demais UFs">
+            <option value="AL">AL</option><option value="BA">BA</option><option value="CE">CE</option>
+            <option value="DF">DF</option><option value="ES">ES</option><option value="GO">GO</option>
+            <option value="MA">MA</option><option value="MG">MG</option><option value="MS">MS</option>
+            <option value="MT">MT</option><option value="PB">PB</option><option value="PE">PE</option>
+            <option value="PI">PI</option><option value="PR">PR</option><option value="RJ">RJ</option>
+            <option value="RN">RN</option><option value="RS">RS</option><option value="SC">SC</option>
+            <option value="SE">SE</option><option value="SP">SP</option>
+          </optgroup>
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-slate-500 text-[10px] font-bold uppercase">Data-Base Ref.</label>
+        <input type="text" id="cfgDataBase" value="09/2026" onchange="salvarEstadoOrcamentoLocal()" class="w-18 bg-white text-slate-800 font-bold border border-slate-300 rounded px-2 py-1 text-center">
+      </div>
+
+      <div>
+        <label class="block text-slate-500 text-[10px] font-semibold uppercase">Encargos</label>
+        <select id="cfgRegime" onchange="atualizarVisualizacao(); recalcularOrcamento();" class="bg-white text-slate-800 border border-slate-300 rounded px-2 py-1 font-medium">
+          <option value="nao_desonerado">Não Desonerado</option>
+          <option value="desonerado">Desonerado</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-indigo-700 text-[10px] font-bold uppercase">Jornada Semanal</label>
+        <select id="cfgJornadaSemanal" onchange="atualizarVisualizacao(); recalcularOrcamento();" class="bg-indigo-50 text-indigo-900 border border-indigo-300 rounded px-2 py-1 font-bold">
+          <option value="44_5">44h/sem (5d • 8,8h/d)</option>
+          <option value="44_55">44h/sem (Seg-Sáb • 8h/d)</option>
+          <option value="40_5">40h/sem (5d • 8,0h/d)</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-slate-500 text-[10px] font-semibold uppercase">BDI Padrão (%)</label>
+        <input type="number" id="cfgBdiPadrao" value="22.12" step="0.01" onchange="recalcularOrcamento()" class="w-18 bg-white text-emerald-700 font-bold border border-slate-300 rounded px-1.5 py-1 text-right">
+      </div>
+
+      <div>
+        <label class="block text-slate-500 text-[10px] font-semibold uppercase">BDI Dif. (%)</label>
+        <input type="number" id="cfgBdiDif" value="14.02" step="0.01" onchange="recalcularOrcamento()" class="w-18 bg-white text-amber-700 font-bold border border-slate-300 rounded px-1.5 py-1 text-right">
+      </div>
+
+      <div class="border-l border-slate-300 pl-2 flex gap-1.5">
+        <button onclick="abrirModalLegenda()" class="bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 px-2.5 py-1.5 rounded font-bold transition">
+          📖 Legenda
+        </button>
+        <button onclick="abrirModalCPU(null)" class="bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 py-1.5 rounded font-semibold transition shadow-2xs">+ CPU</button>
+        <button onclick="abrirModalImportacao()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded font-bold transition shadow-2xs">📂 Base / Upload</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- CORPO PRINCIPAL -->
+  <main class="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-3 p-3 overflow-hidden">
+
+    <!-- COLUNA ESQUERDA (5 cols): LINHA DE COMANDO + INSPEÇÃO ANALÍTICA -->
+    <section class="lg:col-span-5 flex flex-col gap-3 overflow-hidden">
+      
+      <div class="bg-white border border-slate-200 rounded-xl p-3 shadow-2xs">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <span class="text-[11px] font-bold uppercase tracking-wider text-blue-700">
+            ⌘ Linha de Comando de Pesquisa
+          </span>
+          <div class="flex items-center gap-1.5">
+            <select id="filtroNatureza" onchange="filtrarComposicoes()" class="bg-slate-50 text-slate-800 border border-slate-300 rounded px-2 py-0.5 text-[11px] font-bold">
+              <option value="APENAS_SERVICOS" selected>🔧 Composições SINAPI + CPUs (Padrão)</option>
+              <option value="CPU">⚡ Apenas CPUs Criadas / Adaptadas</option>
+              <option value="TODOS">Todos (Composições + Insumos Puros)</option>
+              <option value="COMPOSICAO">🔧 Composições SINAPI Referência</option>
+              <option value="MANUTENCAO">🛠️ Composições de Manutenção</option>
+              <option value="INSUMO">📦 Apenas Insumos Puros (Materiais/Equip.)</option>
+              <option value="MAO_DE_OBRA">👷 Apenas Mão de Obra</option>
+            </select>
+            <span id="contadorBase" class="text-[11px] font-bold text-slate-700 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded">0 itens</span>
+          </div>
+        </div>
+
+        <input type="text" id="inputBusca" oninput="filtrarComposicoes()" 
+          placeholder="Digite o serviço ou código (ex: 101797, camera, 97603, condulete, rj45)..." 
+          class="cmd-input w-full bg-slate-50 text-slate-900 border border-slate-300 rounded-lg px-3 py-2 text-sm placeholder-slate-400">
+
+        <div id="listaResultados" class="mt-2 max-h-52 overflow-y-auto divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white"></div>
+      </div>
+
+      <!-- PAINEL DE INSPEÇÃO COM ABAS + SIMULADOR DE PRAZO -->
+      <div class="flex-1 bg-white border border-slate-200 rounded-xl shadow-2xs flex flex-col overflow-hidden">
+        <div id="barraAbasInspecao" class="bg-slate-100 border-b border-slate-200 px-2 pt-1.5 flex items-center gap-1 overflow-x-auto text-xs"></div>
+        <div id="painelRaioX" class="flex-1 p-3.5 flex flex-col overflow-y-auto"></div>
+      </div>
+
+    </section>
+
+    <!-- COLUNA DIREITA (7 cols): PLANILHA ORÇAMENTÁRIA + CRONOGRAMA -->
+    <section class="lg:col-span-7 bg-white border border-slate-200 rounded-xl p-3.5 shadow-2xs flex flex-col overflow-hidden">
+      <div class="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-200">
+        <div>
+          <h2 class="text-sm font-bold text-slate-900 uppercase tracking-wider">Planilha Orçamentária & Cronograma (<span id="labelUFPlanilha" class="text-blue-700">Selecione a UF</span>)</h2>
+          <p class="text-xs text-slate-500">Salva automaticamente no navegador • Conformidade Lei 14.133/2021 (Art. 23, § 2º)</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="limparBaseCarregada()" class="text-xs text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-2.5 py-1.5 rounded border border-slate-300 font-medium">Zerar Base</button>
+          <button onclick="limparOrcamento()" class="text-xs text-rose-700 hover:bg-rose-50 px-2.5 py-1.5 rounded border border-rose-300 font-medium">Limpar Orçamento</button>
+          <button onclick="exportarExcel()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3.5 py-1.5 rounded-lg shadow-2xs transition">
+            ⬇ Exportar Excel + CPUs (.XLSX)
+          </button>
+        </div>
+      </div>
+
+      <div class="flex-1 overflow-auto mt-2">
+        <table class="w-full text-left border-collapse text-xs">
+          <thead>
+            <tr class="bg-slate-100 text-slate-600 border-b border-slate-200 text-[10px] uppercase">
+              <th class="py-2 px-1.5 w-10">ID</th>
+              <th class="py-2 px-1.5">Fonte</th>
+              <th class="py-2 px-1.5">Código</th>
+              <th class="py-2 px-1.5 min-w-[170px]">Descrição do Serviço (c/ Rastreabilidade SINAPI)</th>
+              <th class="py-2 px-1.5 text-center">Unid.</th>
+              <th class="py-2 px-1.5 text-right">Quant.</th>
+              <th class="py-2 px-1.5 text-center bg-indigo-50 text-indigo-900">Equipes</th>
+              <th class="py-2 px-1.5 text-right bg-indigo-50 text-indigo-900">Prazo<br><span class="text-[9px] text-indigo-600">(Dias / Sem.)</span></th>
+              <th class="py-2 px-1.5 text-right">Unit. s/ BDI</th>
+              <th class="py-2 px-1.5 text-right">Total s/ BDI</th>
+              <th class="py-2 px-1.5 text-center">BDI</th>
+              <th class="py-2 px-1.5 text-right">Unit. c/ BDI</th>
+              <th class="py-2 px-1.5 text-right">Total c/ BDI</th>
+              <th class="py-2 px-1 text-center">✕</th>
+            </tr>
+          </thead>
+          <tbody id="tabelaOrcamentoBody" class="divide-y divide-slate-200"></tbody>
+        </table>
+      </div>
+
+      <div class="mt-3 pt-2.5 border-t border-slate-200 grid grid-cols-1 sm:grid-cols-4 gap-3 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+        <div class="bg-indigo-50/90 border border-indigo-200 rounded px-2.5 py-1.5">
+          <span class="text-[10px] text-indigo-800 font-bold uppercase block">⏱️ Prazo / Esforço Total</span>
+          <span id="totalCronogramaResumo" class="text-xs font-extrabold text-indigo-900 block mt-0.5">0,0 dias (0,0 sem.)</span>
+          <span id="totalHomemHoraResumo" class="text-[10px] text-indigo-700 block">0,0 Hh totais de M.O.</span>
+        </div>
+        <div>
+          <span class="text-[11px] text-slate-500 font-medium block">Custo Direto (Sem BDI)</span>
+          <span id="totalSemBdi" class="text-base font-bold text-slate-800">R$ 0,00</span>
+        </div>
+        <div>
+          <span class="text-[11px] text-slate-500 font-medium block">Parcela Total de BDI</span>
+          <span id="totalValorBdi" class="text-base font-bold text-amber-700">R$ 0,00</span>
+        </div>
+        <div class="sm:text-right">
+          <span class="text-[11px] text-slate-500 font-medium block">Preço Global Total (Com BDI)</span>
+          <span id="totalComBdi" class="text-lg font-extrabold text-emerald-700">R$ 0,00</span>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- MODAL 0: LEGENDA E ENQUADRAMENTO LEI 14.133/2021 -->
+  <div id="modalLegenda" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs hidden items-center justify-center p-4 z-50">
+    <div class="bg-white border border-slate-200 rounded-xl max-w-3xl w-full p-6 shadow-2xl max-h-[90vh] overflow-y-auto text-xs">
+      <div class="flex justify-between items-center border-b border-slate-200 pb-3 mb-4">
+        <div>
+          <h3 class="text-base font-extrabold text-slate-900">📖 Guia Oficial: Tipos de Composições SINAPI e Persistência de Dados</h3>
+          <p class="text-xs text-slate-500">Nomenclatura oficial da Caixa, Lei 14.133/2021 e como manter a base salva</p>
+        </div>
+        <button onclick="fecharModalLegenda()" class="text-slate-400 hover:text-slate-700 text-xl font-bold">&times;</button>
+      </div>
+
+      <div class="space-y-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div class="bg-blue-50 border border-blue-200 p-3 rounded-lg">
+            <span class="inline-block bg-blue-100 text-blue-800 border border-blue-300 font-extrabold px-2 py-0.5 rounded text-[10px] mb-1">🔧 COMPOSIÇÃO SINAPI (SERVIÇO)</span>
+            <p class="text-slate-700 leading-relaxed">
+              Composição oficial de serviço de engenharia com todos os insumos precificados pelo IBGE na UF. Vai direto para a planilha com fonte <b>SINAPI</b>.
+            </p>
+          </div>
+          <div class="bg-cyan-50 border border-cyan-200 p-3 rounded-lg">
+            <span class="inline-block bg-cyan-100 text-cyan-900 border border-cyan-300 font-extrabold px-2 py-0.5 rounded text-[10px] mb-1">🚜 COMPOSIÇÃO EQUIPAMENTO (CHP / CHI)</span>
+            <p class="text-slate-700 leading-relaxed">
+              É uma <b>Composição Auxiliar de Custo Horário de Equipamento</b> (ex: Retroescavadeira - CHI Diurno ou CHP Diurno). Calcula quanto custa 1 hora da máquina parada (CHI) ou trabalhando (CHP).
+            </p>
+          </div>
+        </div>
+
+        <div class="bg-amber-50 border border-amber-300 p-3.5 rounded-lg space-y-1.5">
+          <span class="inline-block bg-amber-100 text-amber-900 border border-amber-400 font-extrabold px-2 py-0.5 rounded text-[10px]">⚠️ COMPOSIÇÃO SINAPI (C/ INSUMO S/ PREÇO NA UF)</span>
+          <p class="text-slate-700 leading-relaxed">
+            É uma <b>Composição Oficial do SINAPI</b> onde a Caixa aferiu os coeficientes de Mão de Obra, mas o equipamento principal veio sem preço coletado na UF.<br>
+            • Ao inserir a cotação do equipamento, o sistema gera uma <b>CPU Adaptada</b> com o título:<br>
+            <code class="block bg-white border border-amber-300 p-1.5 rounded mt-1 text-slate-900 font-mono">
+              [Texto da Composição] - (CPU ADAPTADA - REF. SINAPI [Código] - BASE [Mês/Ano] - [UF])
+            </code>
+          </p>
+        </div>
+      </div>
+
+      <div class="mt-5 pt-3 border-t border-slate-200 flex justify-end">
+        <button onclick="fecharModalLegenda()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 py-2 rounded-lg">Fechar Guia</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 1: CRIAR / CLONAR CPU -->
+  <div id="modalCPU" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs hidden items-center justify-center p-4 z-50">
+    <div class="bg-white border border-slate-200 rounded-xl max-w-3xl w-full p-5 shadow-2xl max-h-[92vh] overflow-y-auto">
+      <div class="flex justify-between items-center border-b border-slate-200 pb-3 mb-4">
+        <div>
+          <h3 id="tituloModalCPU" class="text-base font-bold text-slate-900">Criar / Adaptar Composição Própria Referenciada (CPU)</h3>
+          <p class="text-xs text-slate-500">Gera automaticamente a nomenclatura com rastreabilidade do código SINAPI e Data-Base</p>
+        </div>
+        <button onclick="fecharModalCPU()" class="text-slate-400 hover:text-slate-700 text-xl font-bold">&times;</button>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs mb-3">
+        <div>
+          <label class="block text-slate-600 font-semibold mb-1">Fonte na Planilha</label>
+          <input type="text" id="cpuFonte" value="CPU (REF. SINAPI)" class="w-full bg-slate-50 border border-slate-300 rounded px-2.5 py-1.5 text-indigo-700 font-bold">
+        </div>
+        <div>
+          <label class="block text-slate-600 font-semibold mb-1">Novo Código CPU</label>
+          <input type="text" id="cpuCodigo" value="CPU-001" class="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-slate-900 font-mono font-bold">
+        </div>
+        <div>
+          <label class="block text-slate-600 font-semibold mb-1">Rastreabilidade (Origem)</label>
+          <input type="text" id="cpuOrigemRef" class="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-slate-700 font-semibold">
+        </div>
+        <div>
+          <label class="block text-slate-600 font-semibold mb-1">Unidade</label>
+          <input type="text" id="cpuUnidade" value="UN" class="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-slate-900 text-center font-bold">
+        </div>
+      </div>
+
+      <div class="text-xs mb-3">
+        <label class="block text-slate-600 font-semibold mb-1">Descrição Técnica com Referência Oficial (Sai na Planilha e Memória Analítica)</label>
+        <textarea id="cpuDescricao" rows="2" class="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-slate-900 font-medium"></textarea>
+      </div>
+
+      <div class="border-t border-slate-200 pt-3 mb-4">
+        <div class="flex justify-between items-center mb-2">
+          <span class="text-xs font-bold text-slate-700">Árvore Analítica de Insumos e Mão de Obra da CPU</span>
+          <button onclick="adicionarLinhaInsumoCPU()" class="text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 px-2.5 py-1 rounded border border-blue-200 font-semibold">+ Adicionar Item</button>
+        </div>
+        <div id="listaInsumosCPU" class="space-y-1.5 max-h-52 overflow-y-auto pr-1"></div>
+      </div>
+
+      <div class="flex justify-end gap-2 border-t border-slate-200 pt-3">
+        <button onclick="fecharModalCPU()" class="text-xs px-3 py-2 rounded border border-slate-300 text-slate-700 font-medium">Cancelar</button>
+        <button onclick="salvarCPU()" class="text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 py-2 rounded shadow">Salvar como Nova CPU</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 2: UPLOAD MÚLTIPLO + GERADOR DE ARQUIVO .JSON.GZ (< 4MB PARA GITHUB) -->
+  <div id="modalImport" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs hidden items-center justify-center p-4 z-50">
+    <div class="bg-white border border-slate-200 rounded-xl max-w-2xl w-full p-5 shadow-2xl max-h-[92vh] overflow-y-auto">
+      <div class="flex justify-between items-center border-b border-slate-200 pb-3 mb-4">
+        <div>
+          <h3 class="text-base font-bold text-slate-900">Gerenciador de Banco de Dados SINAPI (Com Compressão GZIP &lt; 4 MB)</h3>
+          <p class="text-xs text-slate-500">Salva no navegador e gera o arquivo <code class="font-bold text-indigo-700">base_sinapi_2rf.json.gz</code> abaixo do limite de 25 MB do GitHub</p>
+        </div>
+        <button onclick="fecharModalImportacao()" class="text-slate-400 hover:text-slate-700 text-xl font-bold">&times;</button>
+      </div>
+
+      <div class="space-y-4 text-xs">
+        <!-- ATALHO DIRETO SE A BASE JÁ ESTIVER CARREGADA NA MEMÓRIA DO NAVEGADOR -->
+        <div id="boxAtalhoExportarGZ" class="hidden bg-indigo-50 border-2 border-indigo-400 rounded-xl p-3.5 flex flex-wrap items-center justify-between gap-3">
+          <div class="flex-1">
+            <span class="font-extrabold text-indigo-950 block">⚡ Sua base já está carregada na memória! Não precisa subir os Excels de novo.</span>
+            <span class="text-[11px] text-indigo-800">Clique no botão ao lado para baixar diretamente o arquivo comprimido <b>base_sinapi_2rf.json.gz</b> (~3 MB) para colocar no GitHub.</span>
+          </div>
+          <button onclick="exportarBaseCompactaJSON()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-4 py-2.5 rounded-lg shadow transition shrink-0">
+            💾 Baixar .JSON.GZ (&lt; 4 MB)
+          </button>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 p-3.5 rounded-lg border border-slate-200">
+          <div>
+            <label class="block text-slate-700 font-semibold mb-1">1. Qual Base está enviando?</label>
+            <select id="importFonteNome" class="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-slate-900 font-semibold">
+              <option value="SINAPI">Pacote SINAPI Caixa (Referência, Manutenções, Mão de Obra)</option>
+              <option value="SICRO">SICRO (DNIT)</option>
+              <option value="OUTRA">Outra Base Estadual / Regional</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-blue-800 font-bold mb-1">2. Escolha a UF de trabalho (2ª RF no topo):</label>
+            <select id="importUFSelecionada" onchange="sincronizarUFDoModalParaTopo()" class="w-full bg-white border border-blue-500 rounded px-2.5 py-1.5 text-blue-900 font-bold">
+              <option value="" disabled selected>— Selecione a UF (2ª Região Fiscal) —</option>
+              <optgroup label="2ª Região Fiscal RFB (Região Norte)">
+                <option value="AC">AC - Acre</option>
+                <option value="AM">AM - Amazonas</option>
+                <option value="AP">AP - Amapá</option>
+                <option value="PA">PA - Pará</option>
+                <option value="RO">RO - Rondônia</option>
+                <option value="RR">RR - Roraima</option>
+              </optgroup>
+              <optgroup label="Demais Estados Norte">
+                <option value="TO">TO - Tocantins</option>
+              </optgroup>
+              <optgroup label="Demais UFs do Brasil">
+                <option value="AL">AL</option><option value="BA">BA</option><option value="CE">CE</option>
+                <option value="DF">DF</option><option value="ES">ES</option><option value="GO">GO</option>
+                <option value="MA">MA</option><option value="MG">MG</option><option value="MS">MS</option>
+                <option value="MT">MT</option><option value="PB">PB</option><option value="PE">PE</option>
+                <option value="PI">PI</option><option value="PR">PR</option><option value="RJ">RJ</option>
+                <option value="RN">RN</option><option value="RS">RS</option><option value="SC">SC</option>
+                <option value="SE">SE</option><option value="SP">SP</option>
+              </optgroup>
+            </select>
+          </div>
+        </div>
+
+        <div class="bg-blue-50/50 p-4 rounded-lg border border-blue-200">
+          <h4 class="font-bold text-blue-800 mb-1">3. Selecione os arquivos Excel (.XLSX) da Caixa ou a Base Compacta (.JSON.GZ / .JSON)</h4>
+          <p class="text-slate-600 mb-3 leading-relaxed">
+            Os dados carregados aqui ficam <b>gravados permanentemente na memória deste navegador</b>.
+          </p>
+          <input type="file" id="inputExcelMultiple" accept=".xlsx,.xls,.csv,.json,.gz" multiple onchange="processarMultiplosArquivosCaixa(event)" 
+            class="block w-full text-slate-700 file:mr-3 file:py-2 file:px-4 file:rounded file:border-0 file:text-xs file:font-bold file:bg-blue-600 file:text-white hover:file:bg-blue-700 cursor-pointer">
+          
+          <div id="logArquivosImportados" class="mt-3 space-y-1 text-[11px] font-mono bg-white p-3 rounded border border-slate-300 max-h-52 overflow-y-auto hidden"></div>
+
+          <div id="bannerConclusaoUpload" class="hidden mt-4 bg-emerald-50 border-2 border-emerald-500 rounded-xl p-4 text-center shadow-md space-y-2">
+            <p id="textoResumoUpload" class="text-sm font-extrabold text-emerald-900">✅ Planilhas carregadas e salvas na memória permanente do navegador!</p>
+            <p id="subtextoResumoUpload" class="text-xs text-emerald-700"></p>
+            <div class="flex flex-wrap justify-center gap-2 pt-2">
+              <button onclick="exportarBaseCompactaJSON()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-4 py-2 rounded-lg shadow transition">
+                💾 Baixar Base Comprimida p/ GitHub (.JSON.GZ &lt; 4 MB)
+              </button>
+              <button onclick="fecharModalImportacao()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-5 py-2 rounded-lg shadow transition">
+                ✓ Concluído! Fechar Janela
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ============================================================================================================
+    // CONFIGURAÇÃO DE BANCO NA NUVEM PARA GOOGLE SITES / GITHUB PAGES:
+    // Aponta por padrão para o arquivo comprimido "base_sinapi_2rf.json.gz" (~3 MB) na mesma pasta do index.html!
+    // ============================================================================================================
+    const URL_BASE_NUVEM = "./base_sinapi_2rf.json.gz";
+
+    const LISTA_UFS = ["AC","AM","AP","PA","RO","RR","TO","AL","BA","CE","DF","ES","GO","MA","MG","MS","MT","PB","PE","PI","PR","RJ","RN","RS","SC","SE","SP"];
+    const UFS_NORTE_E_REF = ["AC","AM","AP","PA","RO","RR","TO","SP","DF","PADRAO"];
+
+    function traduzirSiglaAbaCaixa(sheetName) {
+      const sn = normalizar(sheetName);
+      if (sn === "CSD") return "Aba CSD (Composição Sintética Desonerada)";
+      if (sn === "CSND") return "Aba CSND (Composição Sintética Não Desonerada)";
+      if (sn === "CSE") return "Aba CSE (Composição Sintética C/ Encargos)";
+      if (sn === "CAD" || sn === "ANALITICO" || sn.includes("ANALITIC")) return `Aba ${sheetName} (Estrutura Analítica de Composições)`;
+      if (sn === "CAND") return "Aba CAND (Composição Analítica Não Desonerada)";
+      if (sn === "CAE") return "Aba CAE (Composição Analítica C/ Encargos)";
+      if (sn === "ISD") return "Aba ISD (Insumo Puro Desonerado)";
+      if (sn === "ISND") return "Aba ISND (Insumo Puro Não Desonerado)";
+      if (sn === "ISE") return "Aba ISE (Insumo Puro S/ Instalação)";
+      return `Aba ${sheetName}`;
+    }
+
+    let mapaGlobalComposicoes = new Map();
+    let mapaGlobalInsumos = new Map();
+    let baseComposicoes = [];
+
+    let abasInspecao = [];
+    let itemSelecionado = null;
+    let itensOrcamento = [];
+
+    // ============================================================================================================
+    // PERSISTÊNCIA PERMANENTE NO NAVEGADOR (INDEXEDDB) + COMPRESSOR E DESCOMPRESSOR GZIP (.JSON.GZ)
+    // ============================================================================================================
+    function abrirIndexedDB() {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open("SIOB_RFB_DATABASE_V15", 1);
+        req.onupgradeneeded = e => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains("store")) {
+            db.createObjectStore("store", { keyPath: "chave" });
+          }
+        };
+        req.onsuccess = e => resolve(e.target.result);
+        req.onerror = e => reject(e);
+      });
+    }
+
+    async function salvarBaseNoNavegador() {
+      try {
+        const db = await abrirIndexedDB();
+        const tx = db.transaction("store", "readwrite");
+        tx.objectStore("store").put({
+          chave: "base_sinapi_principal",
+          uf: obterUFAtiva(),
+          dataBase: obterDataBaseAtiva(),
+          composicoes: Array.from(mapaGlobalComposicoes.entries()),
+          insumos: Array.from(mapaGlobalInsumos.entries())
+        });
+      } catch (e) {
+        console.warn("Aviso ao gravar no IndexedDB:", e);
+      }
+    }
+
+    async function salvarEstadoOrcamentoLocal() {
+      try {
+        const db = await abrirIndexedDB();
+        const tx = db.transaction("store", "readwrite");
+        tx.objectStore("store").put({
+          chave: "orcamento_em_andamento",
+          uf: obterUFAtiva(),
+          dataBase: obterDataBaseAtiva(),
+          itens: itensOrcamento
+        });
+      } catch (e) {}
+    }
+
+    async function inicializarBancoDeDadosAutomatico() {
+      // 1º Tenta recuperar a base que já foi salva anteriormente no IndexedDB deste navegador
+      try {
+        const db = await abrirIndexedDB();
+        const dadosSalvos = await new Promise(res => {
+          const req = db.transaction("store", "readonly").objectStore("store").get("base_sinapi_principal");
+          req.onsuccess = () => res(req.result);
+          req.onerror = () => res(null);
+        });
+
+        const orcSalvo = await new Promise(res => {
+          const req = db.transaction("store", "readonly").objectStore("store").get("orcamento_em_andamento");
+          req.onsuccess = () => res(req.result);
+          req.onerror = () => res(null);
+        });
+
+        if (orcSalvo && Array.isArray(orcSalvo.itens)) {
+          itensOrcamento = orcSalvo.itens;
+          if (orcSalvo.uf) document.getElementById('cfgUF').value = orcSalvo.uf;
+          if (orcSalvo.dataBase) document.getElementById('cfgDataBase').value = orcSalvo.dataBase;
+        }
+
+        if (dadosSalvos && Array.isArray(dadosSalvos.composicoes) && dadosSalvos.composicoes.length > 0) {
+          mapaGlobalComposicoes = new Map(dadosSalvos.composicoes);
+          mapaGlobalInsumos = new Map(dadosSalvos.insumos || []);
+          if (dadosSalvos.uf && !document.getElementById('cfgUF').value) {
+            document.getElementById('cfgUF').value = dadosSalvos.uf;
+          }
+          if (dadosSalvos.dataBase) {
+            document.getElementById('cfgDataBase').value = dadosSalvos.dataBase;
+          }
+          reconstruirArrayUnificado();
+          return;
+        }
+      } catch (e) {}
+
+      // 2º Se o navegador estiver vazio, tenta puxar o arquivo .json.gz (ou .json) da nuvem automaticamente
+      if (URL_BASE_NUVEM) {
+        try {
+          const resp = await fetch(URL_BASE_NUVEM);
+          if (resp.ok) {
+            const buffer = await resp.arrayBuffer();
+            const bytes = new Uint8Array(buffer);
+            const textoJSON = (bytes[0] === 0x1f && bytes[1] === 0x8b)
+              ? pako.ungzip(bytes, { to: 'string' })
+              : new TextDecoder("utf-8").decode(bytes);
+            const pacoteNuvem = JSON.parse(textoJSON);
+            carregarPacoteJSON(pacoteNuvem);
+            await salvarBaseNoNavegador();
+            return;
+          }
+        } catch (e) {
+          console.warn("Base na nuvem ainda não disponível:", e);
+        }
+      }
+
+      atualizarVisualizacao();
+      recalcularOrcamento();
+    }
+
+    function reconstruirArrayUnificado() {
+      const listaComposicoes = Array.from(mapaGlobalComposicoes.values());
+      const listaInsumos = Array.from(mapaGlobalInsumos.values());
+      baseComposicoes = [...listaComposicoes, ...listaInsumos];
+      const inicial = listaComposicoes.find(c => c.insumos && c.insumos.length > 0) || listaComposicoes[0] || null;
+      itemSelecionado = inicial;
+      abasInspecao = inicial ? [inicial] : [];
+      atualizarVisualizacao();
+      recalcularOrcamento();
+    }
+
+    // Exporta a base comprimida em GZIP (.json.gz) reduzindo de >25MB para ~3MB!
+    function exportarBaseCompactaJSON() {
+      if (baseComposicoes.length === 0) return alert("Suba as planilhas da Caixa primeiro.");
+
+      const filtrarMapaUF = (objPrecos) => {
+        const novo = {};
+        if (!objPrecos) return novo;
+        UFS_NORTE_E_REF.forEach(u => {
+          if (objPrecos[u] !== undefined && objPrecos[u] > 0) {
+            novo[u] = Number(Number(objPrecos[u]).toFixed(4));
+          }
+        });
+        return novo;
+      };
+
+      const compCompactas = Array.from(mapaGlobalComposicoes.entries()).map(([k, c]) => {
+        const copia = {
+          chave_unica: c.chave_unica,
+          natureza: c.natureza,
+          fonte: c.fonte,
+          codigo: c.codigo,
+          grupo: c.grupo,
+          descricao: c.descricao,
+          unidade: c.unidade,
+          bdi_sugerido: c.bdi_sugerido,
+          precos_nd: filtrarMapaUF(c.precos_nd),
+          precos_d: filtrarMapaUF(c.precos_d),
+          insumos: (c.insumos || []).map(ins => ({
+            tipo: ins.tipo,
+            codigo: ins.codigo,
+            desc: String(ins.codigo).startsWith("COT-") ? ins.desc : "",
+            unid: ins.unid,
+            coef: Number(Number(ins.coef || 0).toFixed(4)),
+            coefs: filtrarMapaUF(ins.coefs)
+          }))
+        };
+        return [k, copia];
+      });
+
+      const insCompactos = Array.from(mapaGlobalInsumos.entries()).map(([k, i]) => [
+        k,
+        {
+          chave_unica: i.chave_unica,
+          natureza: i.natureza,
+          fonte: i.fonte,
+          codigo: i.codigo,
+          descricao: i.descricao,
+          desc: i.descricao,
+          unidade: i.unidade,
+          unid: i.unidade,
+          bdi_sugerido: i.bdi_sugerido,
+          precos_nd: filtrarMapaUF(i.precos_nd),
+          precos_d: filtrarMapaUF(i.precos_d)
+        }
+      ]);
+
+      const pacote = {
+        versao: "15.1",
+        ufPadrao: obterUFAtiva(),
+        dataBase: obterDataBaseAtiva(),
+        composicoes: compCompactas,
+        insumos: insCompactos
+      };
+
+      const jsonString = JSON.stringify(pacote);
+      const comprimido = pako.gzip(jsonString);
+      const blob = new Blob([comprimido], { type: "application/gzip" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "base_sinapi_2rf.json.gz";
+      a.click();
+    }
+
+    function carregarPacoteJSON(pacote) {
+      if (pacote.composicoes && pacote.insumos) {
+        mapaGlobalComposicoes = new Map(pacote.composicoes);
+        mapaGlobalInsumos = new Map(pacote.insumos);
+
+        mapaGlobalComposicoes.forEach(comp => {
+          (comp.insumos || []).forEach(ins => {
+            if (!ins.desc) {
+              const cadIns = mapaGlobalInsumos.get(String(ins.codigo));
+              const cadSub = mapaGlobalComposicoes.get(`COMP_${ins.codigo}`) || mapaGlobalComposicoes.get(`MANUT_${ins.codigo}`);
+              if (cadIns) ins.desc = cadIns.descricao;
+              else if (cadSub) ins.desc = cadSub.descricao;
+            }
+          });
+        });
+
+        if (pacote.ufPadrao) document.getElementById('cfgUF').value = pacote.ufPadrao;
+        if (pacote.dataBase) document.getElementById('cfgDataBase').value = pacote.dataBase;
+        reconstruirArrayUnificado();
+      }
+    }
+
+    function abrirModalLegenda() {
+      document.getElementById('modalLegenda').classList.remove('hidden');
+      document.getElementById('modalLegenda').classList.add('flex');
+    }
+
+    function fecharModalLegenda() {
+      document.getElementById('modalLegenda').classList.add('hidden');
+      document.getElementById('modalLegenda').classList.remove('flex');
+    }
+
+    function truncar2Casas(valor) {
+      return Math.floor((valor + 1e-9) * 100) / 100;
+    }
+
+    function formatarMoeda(valor) {
+      return (Number(valor) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    }
+
+    function converterNumeroBR(val) {
+      if (typeof val === 'number') return isNaN(val) ? 0 : val;
+      if (val === null || val === undefined) return 0;
+      let str = String(val).trim().replace(/[R$\s%]/g, '');
+      if (!str || str === '-' || str === 'N/A' || str === 'ND') return 0;
+      if (str.includes(',') && str.includes('.')) {
+        str = str.replace(/\./g, '').replace(',', '.');
+      } else if (str.includes(',')) {
+        str = str.replace(',', '.');
+      }
+      const n = parseFloat(str);
+      return isNaN(n) ? 0 : n;
+    }
+
+    function normalizar(txt) {
+      return String(txt || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/\s+/g, ' ').trim();
+    }
+
+    function extrairCodigoLimpo(val) {
+      if (val === null || val === undefined) return "";
+      const s = String(val).trim().replace(/\.0+$/, '');
+      const apenasDigitos = s.replace(/\D/g, '');
+      if (apenasDigitos.length >= 2 && apenasDigitos.length === s.replace(/[.\-/]/g, '').length) {
+        return String(parseInt(apenasDigitos, 10));
+      }
+      return "";
+    }
+
+    function obterUFAtiva() {
+      return document.getElementById('cfgUF').value || document.getElementById('importUFSelecionada').value || "PA";
+    }
+
+    function obterDataBaseAtiva() {
+      return (document.getElementById('cfgDataBase')?.value || "09/2026").trim();
+    }
+
+    function gerarProximoCodigoCPU(codigoOriginal) {
+      let seq = 1;
+      while (mapaGlobalComposicoes.has(`COMP_CPU-${codigoOriginal}-${String(seq).padStart(2, '0')}`)) {
+        seq++;
+      }
+      return `CPU-${codigoOriginal}-${String(seq).padStart(2, '0')}`;
+    }
+
+    function obterParametrosJornada() {
+      const tipo = document.getElementById('cfgJornadaSemanal').value;
+      if (tipo === "40_5") return { horasSemana: 40, diasSemana: 5, horasDia: 8.0, label: "40h/sem (8,0h/dia)" };
+      if (tipo === "44_55") return { horasSemana: 44, diasSemana: 5.5, horasDia: 8.0, label: "44h/sem (Seg-Sáb 8h/dia)" };
+      return { horasSemana: 44, diasSemana: 5, horasDia: 8.8, label: "44h/sem (8,8h/dia)" };
+    }
+
+    function classificarPapelDoFilho(ins, descResolvida, unidResolvida) {
+      const cadIns = mapaGlobalInsumos.get(String(ins.codigo));
+      if (cadIns && cadIns.natureza === "MAO_DE_OBRA") return "MAO_DE_OBRA";
+
+      const t = normalizar(ins.tipo || '');
+      const d = normalizar(descResolvida || '');
+      const u = normalizar(unidResolvida || '');
+
+      if (
+        t.includes("MAO DE OBRA") ||
+        d.includes("COM ENCARGOS COMPLEMENTARES") ||
+        d.startsWith("ELETRICISTA") ||
+        d.startsWith("AUXILIAR DE") ||
+        d.startsWith("PEDREIRO") ||
+        d.startsWith("SERVENTE") ||
+        d.startsWith("AJUDANTE") ||
+        d.startsWith("CARPINTEIRO") ||
+        d.startsWith("ENCANADOR") ||
+        d.startsWith("PINTOR") ||
+        d.startsWith("MONTADOR") ||
+        d.startsWith("OFICIAL") ||
+        d.startsWith("TECNICO") ||
+        d.startsWith("OPERADOR DE") ||
+        d.startsWith("ARMADOR") ||
+        d.startsWith("SOLDADOR") ||
+        d.startsWith("GESSEIRO") ||
+        d.startsWith("TELHADISTA") ||
+        u === "H"
+      ) {
+        if (!d.includes("CHP ") && !d.includes("CHI ") && !d.includes("HORA PRODUTIVA") && !d.includes("HORA IMPRODUTIVA")) {
+          return "MAO_DE_OBRA";
+        }
+      }
+      if (t.includes("EQUIP") || u === "CHP" || u === "CHI" || d.includes("- CHP") || d.includes("- CHI") || d.includes("HORA PRODUTIVA") || d.includes("BETONEIRA") || d.includes("ANDAIME")) {
+        return "EQUIPAMENTO";
+      }
+      return "MATERIAL";
+    }
+
+    function calcularDimensionamentoServico(item, uf, qtdServico, numEquipes = 1) {
+      const jornada = obterParametrosJornada();
+      const qtd = Math.max(0, Number(qtdServico) || 0);
+      const equipes = Math.max(1, Number(numEquipes) || 1);
+
+      const profissionais = [];
+      let totalHomemHora = 0;
+      let maxHorasGargaloPorUnid = 0;
+
+      (item?.insumos || []).forEach(ins => {
+        const subcomp = buscarSubcomposicaoPorCodigo(ins.codigo);
+        const descReal = ins.desc && ins.desc !== "Item da composição"
+          ? ins.desc
+          : (mapaGlobalInsumos.get(String(ins.codigo))?.desc || subcomp?.descricao || "Item");
+        const unidReal = ins.unid && ins.unid !== "UN"
+          ? ins.unid
+          : (mapaGlobalInsumos.get(String(ins.codigo))?.unid || subcomp?.unidade || ins.unid || "UN");
+
+        if (classificarPapelDoFilho(ins, descReal, unidReal) === "MAO_DE_OBRA") {
+          const coefH = obterCoeficienteFilhoPorUF(ins, uf);
+          if (coefH > 0) {
+            const horasTotaisProf = coefH * qtd;
+            totalHomemHora += horasTotaisProf;
+            if (coefH > maxHorasGargaloPorUnid) maxHorasGargaloPorUnid = coefH;
+
+            profissionais.push({
+              codigo: ins.codigo,
+              nome: descReal.replace("COM ENCARGOS COMPLEMENTARES", "").trim(),
+              coefHoraPorUnid: coefH,
+              minutosPorUnid: coefH * 60,
+              horasTotais: horasTotaisProf,
+              diasTrabalhados: (horasTotaisProf / equipes) / jornada.horasDia
+            });
+          }
+        }
+      });
+
+      const horasDuracaoEquipe = (maxHorasGargaloPorUnid * qtd) / equipes;
+      const diasDuracao = horasDuracaoEquipe / jornada.horasDia;
+      const semanasDuracao = horasDuracaoEquipe / jornada.horasSemana;
+      const producaoDiariaPorEquipe = maxHorasGargaloPorUnid > 0 ? (jornada.horasDia / maxHorasGargaloPorUnid) : 0;
+
+      profissionais.forEach(p => {
+        const razao = maxHorasGargaloPorUnid > 0 ? (p.coefHoraPorUnid / maxHorasGargaloPorUnid) : 1;
+        p.qtdPorEquipe = Math.max(1, Math.round(razao));
+        p.qtdTotalAlocada = p.qtdPorEquipe * equipes;
+      });
+
+      const totalPessoasNaFrente = profissionais.reduce((acc, p) => acc + p.qtdTotalAlocada, 0);
+
+      return {
+        temMaoDeObra: profissionais.length > 0,
+        profissionais,
+        totalPessoasNaFrente,
+        totalHomemHora,
+        horasDuracaoEquipe,
+        diasDuracao,
+        semanasDuracao,
+        producaoDiariaPorEquipe,
+        jornada
+      };
+    }
+
+    function obterBadgeNatureza(item, uf, regime) {
+      if (item.natureza === "CPU") {
+        return { texto: "⚡ CPU PRÓPRIA (REF. SINAPI)", cor: "bg-indigo-100 text-indigo-900 border-indigo-300" };
+      }
+      if (item.natureza === "COMPOSICAO" || item.natureza === "MANUTENCAO") {
+        const dUpper = String(item.descricao || "").toUpperCase();
+        const uUpper = String(item.unidade || "").toUpperCase();
+        const ehEquipamentoHorario = uUpper === "CHP" || uUpper === "CHI" || dUpper.includes("- CHP ") || dUpper.includes("- CHI ");
+        const preco = obterPrecoItemPorUF(item, uf || obterUFAtiva(), regime || document.getElementById('cfgRegime').value);
+
+        if (preco <= 0) {
+          return { texto: "⚠️ COMPOSIÇÃO SINAPI (C/ INSUMO S/ PREÇO NA UF)", cor: "bg-amber-100 text-amber-900 border-amber-400" };
+        }
+        if (ehEquipamentoHorario) {
+          return { texto: "🚜 COMPOSIÇÃO EQUIPAMENTO (CHP / CHI)", cor: "bg-cyan-100 text-cyan-900 border-cyan-300" };
+        }
+        return item.natureza === "MANUTENCAO"
+          ? { texto: "🛠️ COMPOSIÇÃO MANUTENÇÃO SINAPI", cor: "bg-cyan-100 text-cyan-900 border-cyan-300" }
+          : { texto: "🔧 COMPOSIÇÃO OFICIAL SINAPI", cor: "bg-blue-100 text-blue-800 border-blue-300" };
+      }
+      if (item.natureza === "INSUMO") {
+        return { texto: "📦 INSUMO PURO (S/ MÃO DE OBRA)", cor: "bg-amber-100 text-amber-900 border-amber-300" };
+      }
+      if (item.natureza === "MAO_DE_OBRA") {
+        return { texto: "👷 MÃO DE OBRA (HORA/MÊS)", cor: "bg-purple-100 text-purple-900 border-purple-300" };
+      }
+      return { texto: "📄 ITEM SINAPI", cor: "bg-slate-100 text-slate-800 border-slate-300" };
+    }
+
+    function buscarSubcomposicaoPorCodigo(codigoFilho) {
+      const c1 = mapaGlobalComposicoes.get(`COMP_${codigoFilho}`);
+      if (c1 && c1.insumos && c1.insumos.length > 0) return c1;
+      const c2 = mapaGlobalComposicoes.get(`MANUT_${codigoFilho}`);
+      if (c2 && c2.insumos && c2.insumos.length > 0) return c2;
+      return null;
+    }
+
+    function buscarPrecoReferenciaOutrasUFs(codigoItem, regime) {
+      const cadIns = mapaGlobalInsumos.get(String(codigoItem));
+      const cadComp = mapaGlobalComposicoes.get(`COMP_${codigoItem}`) || mapaGlobalComposicoes.get(`MANUT_${codigoItem}`);
+      const alvo = cadIns || cadComp;
+      if (!alvo) return null;
+
+      const mapa = regime === 'desonerado' ? (alvo.precos_d || {}) : (alvo.precos_nd || {});
+      const ufsPrioridadeFallback = ["SP", "DF", "AM", "PA", "GO", "MG", "RJ", "PR", "BA", "PE", "CE"];
+      for (const u of ufsPrioridadeFallback) {
+        if (mapa[u] > 0 && mapa[u] !== 1) return { uf: u, valor: mapa[u] };
+      }
+      for (const [u, val] of Object.entries(mapa)) {
+        if (val > 0 && val !== 1) return { uf: u, valor: val };
+      }
+      return null;
+    }
+
+    function diagnosticarInsumosZerados(item, uf, regime) {
+      if (!item || !item.insumos || item.insumos.length === 0) {
+        return { temZerado: false, todosZeradosTemRefNacional: false, zerados: [], somaCompletaComFallback: 0, somaParcialSemZerados: 0 };
+      }
+      const zerados = [];
+      let todosZeradosTemRef = true;
+      let somaComFallback = 0;
+      let somaParcial = 0;
+
+      item.insumos.forEach(ins => {
+        const coef = obterCoeficienteFilhoPorUF(ins, uf);
+        if (coef <= 0) return;
+        const unitUF = obterPrecoInsumoFilho(ins, uf, regime);
+        if (unitUF <= 0) {
+          const ref = buscarPrecoReferenciaOutrasUFs(ins.codigo, regime);
+          if (!ref || ref.valor <= 0) {
+            todosZeradosTemRef = false;
+          }
+          zerados.push({
+            codigo: ins.codigo,
+            desc: ins.desc,
+            coef,
+            refUF: ref ? ref.uf : null,
+            refValor: ref ? ref.valor : 0
+          });
+          if (ref && ref.valor > 0) {
+            somaComFallback += coef * ref.valor;
+          }
+        } else {
+          somaComFallback += coef * unitUF;
+          somaParcial += coef * unitUF;
+        }
+      });
+
+      return {
+        temZerado: zerados.length > 0,
+        todosZeradosTemRefNacional: zerados.length > 0 && todosZeradosTemRef,
+        zerados,
+        somaCompletaComFallback: todosZeradosTemRef ? truncar2Casas(somaComFallback) : 0,
+        somaParcialSemZerados: truncar2Casas(somaParcial)
+      };
+    }
+
+    function obterPrecoItemPorUF(item, uf, regime, nivel = 0) {
+      if (!item || nivel > 4) return 0;
+      const mapaRegime = regime === 'desonerado' ? (item.precos_d || {}) : (item.precos_nd || {});
+      const mapaOutro = regime === 'desonerado' ? (item.precos_nd || {}) : (item.precos_d || {});
+
+      if (mapaRegime[uf] && mapaRegime[uf] > 0 && mapaRegime[uf] !== 1) return mapaRegime[uf];
+      if (mapaOutro[uf] && mapaOutro[uf] > 0 && mapaOutro[uf] !== 1) return mapaOutro[uf];
+      if (mapaRegime["PADRAO"] && mapaRegime["PADRAO"] > 0 && mapaRegime["PADRAO"] !== 1) return mapaRegime["PADRAO"];
+      if (mapaOutro["PADRAO"] && mapaOutro["PADRAO"] > 0 && mapaOutro["PADRAO"] !== 1) return mapaOutro["PADRAO"];
+
+      if (item.insumos && item.insumos.length > 0) {
+        let somaFilhos = 0;
+        for (const ins of item.insumos) {
+          const coefUF = obterCoeficienteFilhoPorUF(ins, uf);
+          if (coefUF <= 0) continue;
+          const unitIns = obterPrecoInsumoFilho(ins, uf, regime, nivel + 1);
+          if (unitIns <= 0) return 0;
+          somaFilhos += coefUF * unitIns;
+        }
+        if (somaFilhos > 0) return truncar2Casas(somaFilhos);
+      }
+
+      return 0;
+    }
+
+    function obterPrecoInsumoFilho(ins, uf, regime, nivel = 0) {
+      const mapP = regime === 'desonerado' ? (ins.precos_d || {}) : (ins.precos_nd || {});
+      if (mapP[uf] > 0 && mapP[uf] !== 1) return mapP[uf];
+      if (mapP["PADRAO"] > 0 && mapP["PADRAO"] !== 1) return mapP["PADRAO"];
+      if (ins.unit > 0 && ins.unit !== 1) return ins.unit;
+
+      const cadInsumo = mapaGlobalInsumos.get(String(ins.codigo));
+      if (cadInsumo) {
+        const mIns = regime === 'desonerado' ? cadInsumo.precos_d : cadInsumo.precos_nd;
+        if (mIns[uf] > 0 && mIns[uf] !== 1) return mIns[uf];
+        const mAlt = regime === 'desonerado' ? cadInsumo.precos_nd : cadInsumo.precos_d;
+        if (mAlt[uf] > 0 && mAlt[uf] !== 1) return mAlt[uf];
+        if (mIns["PADRAO"] > 0 && mIns["PADRAO"] !== 1) return mIns["PADRAO"];
+      }
+
+      const c1 = mapaGlobalComposicoes.get(`COMP_${ins.codigo}`) || mapaGlobalComposicoes.get(`MANUT_${ins.codigo}`);
+      if (c1) {
+        const pComp = obterPrecoItemPorUF(c1, uf, regime, nivel + 1);
+        if (pComp > 0 && pComp !== 1) return pComp;
+      }
+
+      return 0;
+    }
+
+    function obterCoeficienteFilhoPorUF(ins, uf) {
+      if (ins.coefs) {
+        if (ins.coefs[uf] !== undefined && ins.coefs[uf] > 0) return ins.coefs[uf];
+        if (ins.coefs["PADRAO"] !== undefined && ins.coefs["PADRAO"] > 0) return ins.coefs["PADRAO"];
+        const vals = Object.values(ins.coefs).filter(v => v > 0);
+        if (vals.length > 0) return vals[0];
+      }
+      return ins.coef || 0;
+    }
+
+    function gerarCPUComCotacaoDireta(codigoInsumoCotado, valorDigitado) {
+      const val = parseFloat(String(valorDigitado).replace(',', '.'));
+      if (isNaN(val) || val <= 0) {
+        return alert("Informe um valor de cotação válido maior que R$ 0,00.");
+      }
+      if (!itemSelecionado) return;
+
+      const uf = obterUFAtiva();
+      const regime = document.getElementById('cfgRegime').value;
+      const dataBase = obterDataBaseAtiva();
+
+      if (itemSelecionado.natureza === "CPU") {
+        let somaCPU = 0;
+        let aindaFalta = false;
+        itemSelecionado.insumos.forEach(ins => {
+          if (String(ins.codigo) === String(codigoInsumoCotado)) {
+            ins.unit = val;
+            ins.precos_nd = { [uf]: val, PADRAO: val };
+            ins.precos_d = { [uf]: val, PADRAO: val };
+            if (!ins.desc.includes("(COTAÇÃO")) {
+              ins.desc = `${ins.desc} (COTAÇÃO INSERIDA - REF. INSUMO ${ins.codigo})`;
+            }
+          }
+          const c = obterCoeficienteFilhoPorUF(ins, uf);
+          const u = obterPrecoInsumoFilho(ins, uf, regime);
+          if (c > 0 && u <= 0) aindaFalta = true;
+          somaCPU += c * u;
+        });
+
+        const totalFinal = aindaFalta ? 0 : truncar2Casas(somaCPU);
+        itemSelecionado.precos_nd[uf] = totalFinal;
+        itemSelecionado.precos_d[uf] = totalFinal;
+        itemSelecionado.precos_nd["PADRAO"] = totalFinal;
+        itemSelecionado.precos_d["PADRAO"] = totalFinal;
+        salvarBaseNoNavegador();
+        atualizarVisualizacao();
+        recalcularOrcamento();
+        return;
+      }
+
+      const codOriginal = itemSelecionado.codigo;
+      const fonteOriginal = itemSelecionado.fonte || "SINAPI";
+      const novoCodigoCPU = gerarProximoCodigoCPU(codOriginal);
+
+      const descLimpa = itemSelecionado.descricao.trim();
+      const novaDescricaoCPU = `${descLimpa} - (CPU ADAPTADA - REF. ${fonteOriginal} ${codOriginal} - BASE ${dataBase} - ${uf})`;
+
+      let somaTotalNovaCPU = 0;
+      let aindaTemOutroZerado = false;
+
+      const novosInsumos = (itemSelecionado.insumos || []).map(ins => {
+        const subcomp = buscarSubcomposicaoPorCodigo(ins.codigo);
+        const descReal = ins.desc && ins.desc !== "Item da composição"
+          ? ins.desc
+          : (mapaGlobalInsumos.get(String(ins.codigo))?.desc || subcomp?.descricao || "Item componente");
+        const unidReal = ins.unid && ins.unid !== "UN"
+          ? ins.unid
+          : (mapaGlobalInsumos.get(String(ins.codigo))?.unid || subcomp?.unidade || ins.unid || "UN");
+        const coefUF = obterCoeficienteFilhoPorUF(ins, uf);
+
+        let unitFinal = obterPrecoInsumoFilho(ins, uf, regime);
+        let descFilhoFinal = descReal;
+
+        if (String(ins.codigo) === String(codigoInsumoCotado)) {
+          unitFinal = val;
+          descFilhoFinal = `${descReal} (COTAÇÃO MERCADO - REF. INSUMO ${ins.codigo})`;
+        }
+
+        if (coefUF > 0 && unitFinal <= 0) {
+          aindaTemOutroZerado = true;
+        }
+        somaTotalNovaCPU += coefUF * unitFinal;
+
+        return {
+          tipo: String(ins.codigo) === String(codigoInsumoCotado) ? "COTAÇÃO" : (ins.tipo || "INSUMO"),
+          codigo: String(ins.codigo) === String(codigoInsumoCotado) ? `COT-${ins.codigo}` : ins.codigo,
+          desc: descFilhoFinal,
+          unid: unidReal,
+          coef: coefUF,
+          coefs: { [uf]: coefUF, PADRAO: coefUF },
+          unit: unitFinal,
+          precos_nd: { [uf]: unitFinal, PADRAO: unitFinal },
+          precos_d: { [uf]: unitFinal, PADRAO: unitFinal }
+        };
+      });
+
+      const valorFechado = aindaTemOutroZerado ? 0 : truncar2Casas(somaTotalNovaCPU);
+
+      const novaCPU = {
+        chave_unica: `COMP_${novoCodigoCPU}`,
+        natureza: "CPU",
+        fonte: `CPU (REF. ${fonteOriginal})`,
+        origem_detalhada: `Composição Própria Adaptada de ${fonteOriginal} ${codOriginal} (Base ${dataBase} - ${uf})`,
+        codigo: novoCodigoCPU,
+        grupo: `Ref. ${fonteOriginal} ${codOriginal}`,
+        descricao: novaDescricaoCPU,
+        unidade: itemSelecionado.unidade,
+        precos_nd: { [uf]: valorFechado, PADRAO: valorFechado },
+        precos_d: { [uf]: valorFechado, PADRAO: valorFechado },
+        bdi_sugerido: "padrao",
+        insumos: novosInsumos
+      };
+
+      baseComposicoes.unshift(novaCPU);
+      mapaGlobalComposicoes.set(`COMP_${novoCodigoCPU}`, novaCPU);
+      abasInspecao.push(novaCPU);
+      itemSelecionado = novaCPU;
+
+      salvarBaseNoNavegador();
+      atualizarVisualizacao();
+      recalcularOrcamento();
+    }
+
+    function aplicarPrecoReferenciaNacionalGerandoCPU() {
+      if (!itemSelecionado || !itemSelecionado.insumos) return;
+      const uf = obterUFAtiva();
+      const regime = document.getElementById('cfgRegime').value;
+
+      itemSelecionado.insumos.forEach(ins => {
+        const unitAtual = obterPrecoInsumoFilho(ins, uf, regime);
+        if (unitAtual <= 0) {
+          const ref = buscarPrecoReferenciaOutrasUFs(ins.codigo, regime);
+          if (ref && ref.valor > 0) {
+            gerarCPUComCotacaoDireta(ins.codigo, ref.valor);
+          }
+        }
+      });
+    }
+
+    function aoTrocarUFNoTopo() {
+      const uf = obterUFAtiva();
+      document.getElementById('labelUFPlanilha').textContent = `UF: ${uf}`;
+      salvarBaseNoNavegador();
+      atualizarVisualizacao();
+      recalcularOrcamento();
+    }
+
+    function sincronizarUFDoModalParaTopo() {
+      const val = document.getElementById('importUFSelecionada').value;
+      if (val) {
+        document.getElementById('cfgUF').value = val;
+        document.getElementById('labelUFPlanilha').textContent = `UF: ${val}`;
+      }
+    }
+
+    function atualizarStatusTopo() {
+      const el = document.getElementById('statusGeralTopo');
+      const uf = obterUFAtiva();
+      const db = obterDataBaseAtiva();
+      document.getElementById('labelUFPlanilha').textContent = `UF: ${uf} • Base: ${db}`;
+      if (baseComposicoes.length === 0) {
+        el.className = "text-[11px] text-amber-700 font-medium";
+        el.textContent = "⚠️ Base vazia. Clique em '📂 Base / Upload' para subir as planilhas da Caixa.";
+      } else {
+        const qtdComp = baseComposicoes.filter(c => c.natureza === "COMPOSICAO" || c.natureza === "MANUTENCAO").length;
+        const qtdCPUs = baseComposicoes.filter(c => c.natureza === "CPU").length;
+        const qtdIns = baseComposicoes.filter(c => c.natureza === "INSUMO" || c.natureza === "MAO_DE_OBRA").length;
+        el.className = "text-[11px] text-emerald-700 font-semibold";
+        el.textContent = `✓ Base Salva (${uf} - ${db}): ${qtdComp.toLocaleString('pt-BR')} Composições + ${qtdCPUs} CPUs + ${qtdIns.toLocaleString('pt-BR')} Insumos`;
+      }
+    }
+
+    function filtrarComposicoes() {
+      atualizarStatusTopo();
+      const termo = document.getElementById('inputBusca').value.toLowerCase().trim();
+      const naturezaFiltro = document.getElementById('filtroNatureza').value;
+      const uf = obterUFAtiva();
+      const regime = document.getElementById('cfgRegime').value;
+      const container = document.getElementById('listaResultados');
+
+      if (baseComposicoes.length === 0) {
+        document.getElementById('contadorBase').textContent = "0 itens";
+        container.innerHTML = `
+          <div class="p-5 text-center text-xs text-slate-500 space-y-1">
+            <p class="font-bold text-slate-700">Nenhuma planilha carregada.</p>
+            <p>Clique em <b>"📂 Base / Upload"</b> no topo direito para enviar seus arquivos Excel ou JSON.GZ.</p>
+          </div>`;
+        return;
+      }
+
+      const filtrados = baseComposicoes.filter(item => {
+        if (naturezaFiltro === "APENAS_SERVICOS" && item.natureza !== "COMPOSICAO" && item.natureza !== "MANUTENCAO" && item.natureza !== "CPU") return false;
+        else if (naturezaFiltro !== "TODOS" && naturezaFiltro !== "APENAS_SERVICOS" && item.natureza !== naturezaFiltro) return false;
+        if (!termo) return true;
+        const texto = `${item.codigo} ${item.descricao} ${item.grupo}`.toLowerCase();
+        return termo.split(' ').every(p => texto.includes(p));
+      });
+
+      const pesoNatureza = { "CPU": 1, "COMPOSICAO": 2, "MANUTENCAO": 3, "MAO_DE_OBRA": 4, "INSUMO": 5 };
+      filtrados.sort((a, b) => {
+        const diffNat = (pesoNatureza[a.natureza] || 9) - (pesoNatureza[b.natureza] || 9);
+        if (diffNat !== 0) return diffNat;
+        return (b.insumos?.length || 0) - (a.insumos?.length || 0);
+      });
+
+      document.getElementById('contadorBase').textContent = `${filtrados.length.toLocaleString('pt-BR')} itens`;
+
+      if (filtrados.length === 0) {
+        container.innerHTML = `<div class="p-3 text-xs text-slate-500">Nenhum resultado para "${termo}".</div>`;
+        return;
+      }
+
+      const exibidos = filtrados.slice(0, 120);
+
+      container.innerHTML = exibidos.map(item => {
+        const custo = obterPrecoItemPorUF(item, uf, regime);
+        const qtdFilhos = (item.insumos || []).length;
+        const badge = obterBadgeNatureza(item, uf, regime);
+        const ativo = itemSelecionado && itemSelecionado.chave_unica === item.chave_unica
+          ? 'bg-blue-50/90 border-l-4 border-l-blue-600' : 'hover:bg-slate-50';
+
+        return `
+          <div onclick="selecionarComposicaoPrincipal('${item.chave_unica}')" class="p-2.5 cursor-pointer transition flex items-start justify-between gap-2 ${ativo}">
+            <div class="flex-1 min-w-0">
+              <div class="flex flex-wrap items-center gap-1.5 mb-1">
+                <span class="text-[10px] font-extrabold px-1.5 py-0.5 rounded border ${badge.cor}">${badge.texto}</span>
+                <span class="text-[11px] font-mono font-bold text-slate-800 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-300">Cód: ${item.codigo}</span>
+                ${qtdFilhos > 0 ? `<span class="text-[9px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded">✓ ${qtdFilhos} itens</span>` : ''}
+              </div>
+              <p class="text-xs text-slate-900 font-semibold line-clamp-2 leading-snug">${item.descricao}</p>
+              <span class="text-[10px] text-slate-500 block mt-0.5">📍 ${item.origem_detalhada || item.fonte}</span>
+            </div>
+            <div class="text-right shrink-0">
+              ${custo > 0
+                ? `<span class="text-xs font-extrabold text-emerald-700 block">${formatarMoeda(custo)}</span>`
+                : `<span class="text-[10px] font-extrabold text-amber-800 bg-amber-50 border border-amber-300 px-1.5 py-0.5 rounded block">⚡ Cotar p/ virar CPU</span>`}
+              <span class="text-[10px] font-semibold text-slate-600">Unid: ${item.unidade} (${uf})</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function selecionarComposicaoPrincipal(chaveUnica) {
+      const encontrado = baseComposicoes.find(i => i.chave_unica === chaveUnica);
+      if (encontrado) {
+        itemSelecionado = encontrado;
+        abasInspecao = [encontrado];
+        filtrarComposicoes();
+        renderizarBarraAbas();
+        renderizarRaioX();
+      }
+    }
+
+    function abrirSubcomposicaoEmAba(codigoFilho) {
+      esconderPopupSubcomposicao();
+      const sub = buscarSubcomposicaoPorCodigo(codigoFilho);
+      if (!sub) return;
+      if (!abasInspecao.some(a => a.chave_unica === sub.chave_unica)) {
+        abasInspecao.push(sub);
+      }
+      itemSelecionado = sub;
+      renderizarBarraAbas();
+      renderizarRaioX();
+    }
+
+    function ativarAbaInspecao(chaveUnica) {
+      const alvo = abasInspecao.find(a => a.chave_unica === chaveUnica);
+      if (alvo) {
+        itemSelecionado = alvo;
+        renderizarBarraAbas();
+        renderizarRaioX();
+      }
+    }
+
+    function fecharAbaInspecao(event, chaveUnica) {
+      event.stopPropagation();
+      abasInspecao = abasInspecao.filter(a => a.chave_unica !== chaveUnica);
+      if (itemSelecionado && itemSelecionado.chave_unica === chaveUnica) {
+        itemSelecionado = abasInspecao[abasInspecao.length - 1] || null;
+      }
+      renderizarBarraAbas();
+      renderizarRaioX();
+    }
+
+    function renderizarBarraAbas() {
+      const barra = document.getElementById('barraAbasInspecao');
+      if (abasInspecao.length === 0) {
+        barra.innerHTML = `<span class="text-[11px] text-slate-400 py-1 px-2">Nenhum item selecionado</span>`;
+        return;
+      }
+
+      barra.innerHTML = abasInspecao.map((aba, idx) => {
+        const ativa = itemSelecionado && itemSelecionado.chave_unica === aba.chave_unica;
+        const ehCPU = aba.natureza === "CPU";
+        const classeAba = ativa
+          ? (ehCPU ? "bg-indigo-50 text-indigo-800 border-t-2 border-t-indigo-600 border-x border-indigo-200 font-bold" : "bg-white text-blue-700 border-t-2 border-t-blue-600 border-x border-slate-200 font-bold")
+          : "bg-slate-200/70 text-slate-600 hover:bg-slate-200 font-medium";
+        return `
+          <div onclick="ativarAbaInspecao('${aba.chave_unica}')" class="px-3 py-1.5 rounded-t-lg cursor-pointer flex items-center gap-2 shrink-0 transition ${classeAba}">
+            <span>${ehCPU ? '⚡' : (idx === 0 ? '📌' : '🔗')} ${aba.codigo}</span>
+            ${abasInspecao.length > 1 ? `<button onclick="fecharAbaInspecao(event, '${aba.chave_unica}')" class="text-slate-400 hover:text-rose-600 font-bold">&times;</button>` : ''}
+          </div>
+        `;
+      }).join('');
+    }
+
+    function mostrarPopupSubcomposicao(event, codigoFilho) {
+      const sub = buscarSubcomposicaoPorCodigo(codigoFilho);
+      if (!sub) return;
+
+      const popup = document.getElementById('popupSubcomposicao');
+      const uf = obterUFAtiva();
+      const regime = document.getElementById('cfgRegime').value;
+      const custoSub = obterPrecoItemPorUF(sub, uf, regime);
+
+      const linhasSub = (sub.insumos || []).slice(0, 8).map(ins => {
+        const coef = obterCoeficienteFilhoPorUF(ins, uf);
+        const unit = obterPrecoInsumoFilho(ins, uf, regime);
+        const descIns = ins.desc && ins.desc !== "Item da composição"
+          ? ins.desc
+          : (mapaGlobalInsumos.get(String(ins.codigo))?.desc || buscarSubcomposicaoPorCodigo(ins.codigo)?.descricao || "Insumo");
+        return `
+          <tr class="border-b border-slate-100 text-[10px]">
+            <td class="py-1 font-mono text-slate-500">${ins.codigo}</td>
+            <td class="py-1 text-slate-800 truncate max-w-[210px]">${descIns}</td>
+            <td class="py-1 text-center text-slate-500">${ins.unid}</td>
+            <td class="py-1 text-right font-mono text-blue-700">${Number(coef).toFixed(4)}</td>
+            <td class="py-1 text-right font-semibold text-emerald-700">${formatarMoeda(coef * unit)}</td>
+          </tr>
+        `;
+      }).join('');
+
+      popup.innerHTML = `
+        <div class="flex items-start justify-between gap-2 border-b border-slate-200 pb-2 mb-2">
+          <div>
+            <span class="bg-blue-100 text-blue-800 text-[10px] font-bold px-1.5 py-0.5 rounded">COMPOSIÇÃO AUXILIAR • ${sub.codigo}</span>
+            <p class="text-[11px] font-bold text-slate-900 mt-1 leading-snug">${sub.descricao}</p>
+          </div>
+          <div class="text-right shrink-0">
+            <span class="text-[10px] text-slate-500 block">Unit. (${uf})</span>
+            <span class="text-xs font-extrabold text-emerald-700">${formatarMoeda(custoSub)} / ${sub.unidade}</span>
+          </div>
+        </div>
+        <table class="w-full text-left border-collapse">
+          <thead>
+            <tr class="text-[9px] text-slate-400 uppercase border-b border-slate-200">
+              <th class="pb-1">Cód.</th>
+              <th class="pb-1">Insumo da Subcomposição</th>
+              <th class="pb-1 text-center">Unid.</th>
+              <th class="pb-1 text-right">Coef.</th>
+              <th class="pb-1 text-right">Subtotal</th>
+            </tr>
+          </thead>
+          <tbody>${linhasSub || '<tr><td colspan="5" class="py-2 text-slate-400">Sem subitens detalhados.</td></tr>'}</tbody>
+        </table>
+      `;
+
+      popup.classList.remove('hidden');
+      posicionarPopup(event);
+    }
+
+    function moverPopupSubcomposicao(event) {
+      posicionarPopup(event);
+    }
+
+    function posicionarPopup(event) {
+      const popup = document.getElementById('popupSubcomposicao');
+      if (popup.classList.contains('hidden')) return;
+      const largura = 490;
+      const altura = popup.offsetHeight || 240;
+      let x = event.clientX + 16;
+      let y = event.clientY - 20;
+
+      if (x + largura > window.innerWidth - 10) x = event.clientX - largura - 16;
+      if (y + altura > window.innerHeight - 10) y = window.innerHeight - altura - 12;
+      if (y < 10) y = 10;
+
+      popup.style.left = `${x}px`;
+      popup.style.top = `${y}px`;
+    }
+
+    function esconderPopupSubcomposicao() {
+      document.getElementById('popupSubcomposicao').classList.add('hidden');
+    }
+
+    function atualizarSimuladorPrazoNoPainel() {
+      const box = document.getElementById('boxResultadoSimuladorPrazo');
+      if (!box || !itemSelecionado) return;
+
+      const uf = obterUFAtiva();
+      const qtd = parseFloat(document.getElementById('addQuantidade')?.value) || 1;
+      const equipes = parseInt(document.getElementById('addEquipes')?.value, 10) || 1;
+
+      const calc = calcularDimensionamentoServico(itemSelecionado, uf, qtd, equipes);
+      if (!calc.temMaoDeObra) {
+        box.innerHTML = `<p class="text-[11px] text-slate-500">Este item não possui coeficientes horários (H) de mão de obra direta.</p>`;
+        return;
+      }
+
+      const listaProfHtml = calc.profissionais.map(p => `
+        <div class="flex items-center justify-between text-[11px] py-1 border-b border-indigo-100 last:border-0">
+          <div>
+            <span class="font-bold text-indigo-950">${p.qtdTotalAlocada}x ${p.nome}</span>
+            <span class="text-slate-500 text-[10px] ml-1">(${p.coefHoraPorUnid.toFixed(4)} h/${itemSelecionado.unidade} ≈ ${p.minutosPorUnid.toFixed(1)} min/${itemSelecionado.unidade})</span>
+          </div>
+          <div class="text-right font-mono font-bold text-indigo-800">
+            ${p.horasTotais.toFixed(2)} Hh <span class="text-[10px] font-normal text-slate-500">(${p.diasTrabalhados.toFixed(2)} d)</span>
+          </div>
+        </div>
+      `).join('');
+
+      box.innerHTML = `
+        <div class="grid grid-cols-3 gap-2 mb-2 text-center">
+          <div class="bg-white border border-indigo-200 rounded p-1.5">
+            <span class="text-[9px] text-slate-500 uppercase font-bold block">Equipe Necessária</span>
+            <span class="text-xs font-extrabold text-indigo-800">${calc.totalPessoasNaFrente} pessoa(s)</span>
+            <span class="text-[9px] text-slate-400 block">${equipes} frente(s)</span>
+          </div>
+          <div class="bg-white border border-indigo-200 rounded p-1.5">
+            <span class="text-[9px] text-slate-500 uppercase font-bold block">Duração em Dias</span>
+            <span class="text-xs font-extrabold text-emerald-700">${calc.diasDuracao.toFixed(2)} dias úteis</span>
+            <span class="text-[9px] text-slate-400 block">${calc.horasDuracaoEquipe.toFixed(1)}h de relógio</span>
+          </div>
+          <div class="bg-white border border-indigo-200 rounded p-1.5">
+            <span class="text-[9px] text-slate-500 uppercase font-bold block">Duração Semanas</span>
+            <span class="text-xs font-extrabold text-blue-700">${calc.semanasDuracao.toFixed(2)} sem.</span>
+            <span class="text-[9px] text-slate-400 block">${calc.jornada.label}</span>
+          </div>
+        </div>
+        <div class="bg-white/90 rounded border border-indigo-100 px-2.5 py-1.5">
+          <div class="text-[10px] font-bold text-indigo-900 uppercase mb-0.5 flex justify-between">
+            <span>Equipe p/ ${qtd} ${itemSelecionado.unidade}:</span>
+            <span>Produtividade: ~${calc.producaoDiariaPorEquipe.toFixed(1)} ${itemSelecionado.unidade}/dia por equipe</span>
+          </div>
+          ${listaProfHtml}
+        </div>
+      `;
+    }
+
+    function renderizarRaioX() {
+      const container = document.getElementById('painelRaioX');
+      if (!itemSelecionado) {
+        container.innerHTML = `
+          <div class="m-auto text-center text-slate-400 text-xs p-6">
+            Selecione uma composição na lista acima para visualizar a Mão de Obra, os Materiais e simular o Cronograma/Equipe.
+          </div>`;
+        return;
+      }
+
+      const uf = obterUFAtiva();
+      const dataBase = obterDataBaseAtiva();
+      const regime = document.getElementById('cfgRegime').value;
+      const custoUnit = obterPrecoItemPorUF(itemSelecionado, uf, regime);
+      const diagZerados = diagnosticarInsumosZerados(itemSelecionado, uf, regime);
+      const badge = obterBadgeNatureza(itemSelecionado, uf, regime);
+
+      const listaInsumos = itemSelecionado.insumos || [];
+      let somaMaoDeObra = 0;
+      let somaMaterialEquip = 0;
+
+      const linhasInsumos = listaInsumos.map(ins => {
+        const coefUF = obterCoeficienteFilhoPorUF(ins, uf);
+        const unitReal = obterPrecoInsumoFilho(ins, uf, regime);
+        const subtotal = coefUF * unitReal;
+        const subcomp = buscarSubcomposicaoPorCodigo(ins.codigo);
+        const ehSubcomp = subcomp !== null;
+        const estaZerado = coefUF > 0 && unitReal <= 0;
+        const refNacional = estaZerado ? buscarPrecoReferenciaOutrasUFs(ins.codigo, regime) : null;
+
+        const descReal = ins.desc && ins.desc !== "Item da composição"
+          ? ins.desc
+          : (mapaGlobalInsumos.get(String(ins.codigo))?.desc || subcomp?.descricao || "Item componente");
+        const unidReal = ins.unid && ins.unid !== "UN"
+          ? ins.unid
+          : (mapaGlobalInsumos.get(String(ins.codigo))?.unid || subcomp?.unidade || ins.unid || "UN");
+
+        const papel = classificarPapelDoFilho(ins, descReal, unidReal);
+        if (papel === "MAO_DE_OBRA") somaMaoDeObra += subtotal;
+        else somaMaterialEquip += subtotal;
+
+        let badgeFilho = `<span class="bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded text-[10px] font-bold">📦 INSUMO</span>`;
+        if (estaZerado) {
+          badgeFilho = `<span class="bg-rose-600 text-white px-1.5 py-0.5 rounded text-[10px] font-extrabold">🚨 COTAR (${uf})</span>`;
+        } else if (String(ins.tipo).includes("COTAÇÃO") || String(ins.codigo).startsWith("COT-")) {
+          badgeFilho = `<span class="bg-indigo-100 text-indigo-900 border border-indigo-300 px-1.5 py-0.5 rounded text-[10px] font-extrabold">⚡ COTADO</span>`;
+        } else if (papel === "MAO_DE_OBRA") {
+          badgeFilho = `<span class="bg-purple-100 text-purple-900 px-1.5 py-0.5 rounded text-[10px] font-bold">👷 MÃO DE OBRA</span>`;
+        } else if (ehSubcomp) {
+          badgeFilho = `<span class="bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded text-[10px] font-bold">🔍 COMP. AUX</span>`;
+        } else if (papel === "EQUIPAMENTO") {
+          badgeFilho = `<span class="bg-cyan-100 text-cyan-900 px-1.5 py-0.5 rounded text-[10px] font-bold">🚜 EQUIPAMENTO</span>`;
+        }
+
+        const eventosSubcomp = (ehSubcomp && !estaZerado)
+          ? `onmouseenter="mostrarPopupSubcomposicao(event, '${ins.codigo}')" onmousemove="moverPopupSubcomposicao(event)" onmouseleave="esconderPopupSubcomposicao()" onclick="abrirSubcomposicaoEmAba('${ins.codigo}')"`
+          : '';
+
+        const classeLinha = estaZerado
+          ? "border-b border-rose-300 text-[11px] bg-rose-50/90 font-semibold"
+          : (ehSubcomp
+              ? "border-b border-slate-200 text-[11px] bg-blue-50/40 hover:bg-blue-100/70 cursor-pointer transition"
+              : "border-b border-slate-100 text-[11px] hover:bg-slate-50");
+
+        return `
+          <tr class="${classeLinha}" ${eventosSubcomp}>
+            <td class="py-1.5 px-1 whitespace-nowrap">${badgeFilho}</td>
+            <td class="py-1.5 px-1 font-mono font-semibold ${ehSubcomp ? 'text-blue-700 underline' : 'text-slate-600'}">${ins.codigo}</td>
+            <td class="py-1.5 px-1 ${estaZerado ? 'text-rose-950' : (ehSubcomp ? 'text-blue-950 font-semibold' : 'text-slate-800')} pr-2">
+              ${descReal}
+              ${estaZerado ? (
+                refNacional
+                  ? `<span class="block text-[10px] text-rose-700 font-bold mt-0.5">↳ Sem coleta em ${uf}. Preço no SINAPI (${refNacional.uf}): ${formatarMoeda(refNacional.valor)}</span>`
+                  : `<div class="mt-1.5 flex flex-wrap items-center gap-1.5 bg-white p-1.5 rounded border border-rose-300">
+                       <span class="text-[10px] text-rose-900 font-bold">↳ Informe cotação p/ converter em CPU (REF. SINAPI ${itemSelecionado.codigo} - ${dataBase}):</span>
+                       <input type="number" step="0.01" placeholder="R$ Unit." id="cot_${ins.codigo}" class="w-24 bg-slate-50 border border-rose-400 rounded px-2 py-0.5 text-xs text-slate-900 font-extrabold">
+                       <button onclick="gerarCPUComCotacaoDireta('${ins.codigo}', document.getElementById('cot_${ins.codigo}').value)" class="bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold px-2.5 py-1 rounded shadow-2xs">
+                         ⚡ Gerar CPU c/ Cotação
+                       </button>
+                     </div>`
+              ) : ''}
+            </td>
+            <td class="py-1.5 px-1 text-center text-slate-500">${unidReal}</td>
+            <td class="py-1.5 px-1 text-right font-mono font-semibold text-slate-700">${Number(coefUF).toFixed(4)}</td>
+            <td class="py-1.5 px-1 text-right ${estaZerado ? 'text-rose-700 font-extrabold' : 'text-slate-600'}">${estaZerado ? 'R$ 0,00 ⚠️' : formatarMoeda(unitReal)}</td>
+            <td class="py-1.5 px-1 text-right font-bold ${estaZerado ? 'text-rose-700' : 'text-emerald-700'}">${formatarMoeda(subtotal)}</td>
+          </tr>
+        `;
+      }).join('');
+
+      container.innerHTML = `
+        <div class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-2.5">
+          <div class="flex-1">
+            <div class="flex flex-wrap items-center gap-2 mb-1">
+              <span class="text-xs font-extrabold px-2 py-0.5 rounded border ${badge.cor}">${badge.texto}</span>
+              <span class="bg-slate-100 text-slate-800 border border-slate-300 text-xs font-mono font-bold px-2 py-0.5 rounded">Cód: ${itemSelecionado.codigo}</span>
+              <span class="text-xs text-slate-600">Unid: <strong class="text-slate-900">${itemSelecionado.unidade}</strong></span>
+              <button onclick="abrirModalCPU(itemSelecionado)" class="ml-auto bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-semibold px-2.5 py-1 rounded shadow-2xs transition">
+                ⚡ Clonar / Editar em Modal CPU
+              </button>
+            </div>
+            <h3 class="text-xs font-bold text-slate-900 leading-relaxed mt-1">${itemSelecionado.descricao}</h3>
+          </div>
+          ${custoUnit > 0 ? `
+          <div class="text-right shrink-0 ${itemSelecionado.natureza === 'CPU' ? 'bg-indigo-50 border-indigo-300' : 'bg-emerald-50 border-emerald-200'} px-3 py-1.5 rounded-lg border">
+            <span class="text-[10px] ${itemSelecionado.natureza === 'CPU' ? 'text-indigo-800' : 'text-emerald-800'} font-semibold uppercase block">
+              ${itemSelecionado.natureza === 'CPU' ? `Custo CPU s/ BDI (${uf})` : `Custo Oficial s/ BDI (${uf})`}
+            </span>
+            <span class="text-base font-extrabold ${itemSelecionado.natureza === 'CPU' ? 'text-indigo-700' : 'text-emerald-700'}">${formatarMoeda(custoUnit)}</span>
+          </div>` : `
+          <div class="text-right shrink-0 bg-amber-50 px-3 py-1.5 rounded-lg border-2 border-amber-400">
+            <span class="text-[10px] text-amber-900 font-extrabold uppercase block">⚠️ COMPOSIÇÃO SINAPI</span>
+            <span class="text-xs font-extrabold text-rose-700 block">Insumo s/ preço ➔ Virar CPU</span>
+          </div>`}
+        </div>
+
+        ${diagZerados.temZerado && custoUnit === 0 ? `
+        <div class="mt-2 bg-amber-50 border-2 border-amber-400 rounded-lg p-2.5 text-xs flex flex-wrap items-center justify-between gap-2">
+          <div class="flex-1">
+            <span class="font-extrabold text-amber-950 block">⚖️ Composição Oficial SINAPI c/ Insumo sem Coleta na UF (${diagZerados.zerados.map(z => z.codigo).join(', ')})</span>
+            <span class="text-[11px] text-slate-800">
+              Os itens já precificados desta composição somam <b>${formatarMoeda(diagZerados.somaParcialSemZerados)}</b>. Ao digitar a cotação do insumo faltante na linha vermelha abaixo e clicar em <b>"⚡ Gerar CPU c/ Cotação"</b>, o sistema criará uma <b>CPU</b> preservando no título <code>REF. SINAPI ${itemSelecionado.codigo} - BASE ${dataBase} - ${uf}</code>!
+            </span>
+          </div>
+          ${diagZerados.todosZeradosTemRefNacional ? `
+          <button onclick="aplicarPrecoReferenciaNacionalGerandoCPU()" class="bg-indigo-700 hover:bg-indigo-800 text-white font-bold text-[11px] px-3 py-1.5 rounded shadow shrink-0">
+            ⚡ Gerar CPU c/ Ref. Nacional (${formatarMoeda(diagZerados.somaCompletaComFallback)})
+          </button>` : ''}
+        </div>` : ''}
+
+        ${listaInsumos.length > 0 ? `
+        <div class="mt-2 grid grid-cols-2 gap-2 text-xs">
+          <div class="bg-purple-50 border border-purple-200 rounded-lg px-2.5 py-1.5 flex justify-between items-center">
+            <span class="font-bold text-purple-900">👷 Custo Mão de Obra SINAPI:</span>
+            <span class="font-extrabold text-purple-800">${formatarMoeda(somaMaoDeObra)}</span>
+          </div>
+          <div class="bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 flex justify-between items-center">
+            <span class="font-bold text-amber-900">📦 Custo Material / Equip.:</span>
+            <span class="font-extrabold text-amber-800">${formatarMoeda(somaMaterialEquip)}</span>
+          </div>
+        </div>` : ''}
+
+        <div class="mt-2.5">
+          <h4 class="text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1">Composição Analítica: Mão de Obra, Equipamentos e Insumos (${listaInsumos.length} itens para ${uf})</h4>
+          <div class="overflow-x-auto border border-slate-200 rounded-lg max-h-52">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="text-[10px] bg-slate-100 text-slate-600 border-b border-slate-200 uppercase sticky top-0">
+                  <th class="py-1.5 px-1">Papel</th>
+                  <th class="py-1.5 px-1">Cód.</th>
+                  <th class="py-1.5 px-1">Descrição da Mão de Obra / Insumo</th>
+                  <th class="py-1.5 px-1 text-center">Unid.</th>
+                  <th class="py-1.5 px-1 text-right">Coef. (${uf})</th>
+                  <th class="py-1.5 px-1 text-right">Unit. (${uf})</th>
+                  <th class="py-1.5 px-1 text-right">Subtotal</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${linhasInsumos || `<tr><td colspan="7" class="py-4 px-3 text-center text-xs text-slate-500">Item sem filhos analíticos.</td></tr>`}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="mt-3 bg-indigo-50/70 border border-indigo-200 rounded-xl p-2.5 text-xs space-y-2">
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-indigo-200 pb-1.5">
+            <span class="font-extrabold text-indigo-950 uppercase text-[11px]">
+              ⏱️ Simulador de Equipe, Prazo e Cronograma
+            </span>
+            <div class="flex flex-wrap items-center gap-2">
+              <div>
+                <label class="text-[10px] text-indigo-800 font-bold mr-1">Quant. (${itemSelecionado.unidade}):</label>
+                <input type="number" id="addQuantidade" value="10.00" step="1" min="0.01" oninput="atualizarSimuladorPrazoNoPainel()" class="w-20 bg-white border border-indigo-300 rounded px-2 py-0.5 text-xs font-extrabold text-slate-900 text-right">
+              </div>
+              <div>
+                <label class="text-[10px] text-indigo-800 font-bold mr-1">Nº Equipes:</label>
+                <input type="number" id="addEquipes" value="1" step="1" min="1" oninput="atualizarSimuladorPrazoNoPainel()" class="w-14 bg-white border border-indigo-300 rounded px-2 py-0.5 text-xs font-extrabold text-indigo-900 text-center">
+              </div>
+            </div>
+          </div>
+
+          <div id="boxResultadoSimuladorPrazo"></div>
+
+          <div class="pt-1.5 border-t border-indigo-200 flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <label class="text-[10px] text-slate-700 font-bold uppercase">BDI:</label>
+              <select id="addTipoBdi" class="bg-white border border-slate-300 rounded px-2 py-1 text-xs font-medium text-slate-800">
+                <option value="padrao" ${itemSelecionado.bdi_sugerido === 'padrao' ? 'selected' : ''}>BDI Padrão de Obras</option>
+                <option value="diferenciado" ${itemSelecionado.bdi_sugerido === 'diferenciado' ? 'selected' : ''}>BDI Diferenciado (Equip./Insumo)</option>
+              </select>
+            </div>
+            <button onclick="adicionarAoOrcamento()" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-4 py-1.5 rounded-lg shadow-2xs transition">
+              + Inserir no Orçamento & Cronograma
+            </button>
+          </div>
+        </div>
+      `;
+
+      atualizarSimuladorPrazoNoPainel();
+    }
+
+    function atualizarVisualizacao() {
+      filtrarComposicoes();
+      renderizarBarraAbas();
+      renderizarRaioX();
+    }
+
+    function abrirModalImportacao() {
+      document.getElementById('bannerConclusaoUpload').classList.add('hidden');
+      const boxAtalho = document.getElementById('boxAtalhoExportarGZ');
+      if (baseComposicoes.length > 0) {
+        boxAtalho.classList.remove('hidden');
+      } else {
+        boxAtalho.classList.add('hidden');
+      }
+      document.getElementById('modalImport').classList.remove('hidden');
+      document.getElementById('modalImport').classList.add('flex');
+    }
+
+    function fecharModalImportacao() {
+      document.getElementById('modalImport').classList.add('hidden');
+      document.getElementById('modalImport').classList.remove('flex');
+    }
+
+    async function processarMultiplosArquivosCaixa(event) {
+      const files = Array.from(event.target.files);
+      if (files.length === 0) return;
+
+      const selModal = document.getElementById('importUFSelecionada');
+      const selTopo = document.getElementById('cfgUF');
+      if (!selModal.value && !selTopo.value) {
+        const ufEscolhida = prompt("Informe a sigla da UF prioritária da 2ª Região Fiscal (AC, AM, AP, PA, RO, RR):", "PA") || "PA";
+        selModal.value = ufEscolhida.toUpperCase().trim();
+      }
+      sincronizarUFDoModalParaTopo();
+
+      files.forEach(f => {
+        const matchData = f.name.match(/(20\d{2})[_-](\d{2})/);
+        if (matchData) {
+          document.getElementById('cfgDataBase').value = `${matchData[2]}/${matchData[1]}`;
+        }
+      });
+
+      const ufManual = obterUFAtiva();
+      const logBox = document.getElementById('logArquivosImportados');
+      const bannerFim = document.getElementById('bannerConclusaoUpload');
+      bannerFim.classList.add('hidden');
+      logBox.classList.remove('hidden');
+      logBox.innerHTML = `<div class="text-blue-700 font-bold">⏳ Processando arquivos (Data-Base: ${obterDataBaseAtiva()})...</div>`;
+
+      for (const file of files) {
+        if (file.name.toLowerCase().endsWith('.json') || file.name.toLowerCase().endsWith('.gz')) {
+          const buffer = await file.arrayBuffer();
+          const bytes = new Uint8Array(buffer);
+          const texto = (bytes[0] === 0x1f && bytes[1] === 0x8b)
+            ? pako.ungzip(bytes, { to: 'string' })
+            : new TextDecoder("utf-8").decode(bytes);
+          carregarPacoteJSON(JSON.parse(texto));
+          await salvarBaseNoNavegador();
+          logBox.innerHTML += `<div class="text-emerald-700 font-bold">✓ Base compacta carregada e salva com sucesso!</div>`;
+          bannerFim.classList.remove('hidden');
+          return;
+        }
+
+        const nomeArq = normalizar(file.name);
+
+        if (nomeArq.includes("FAMILIA") && nomeArq.includes("COEFICIENTE")) {
+          logBox.innerHTML += `<div class="text-amber-700 bg-amber-50 p-1.5 rounded border border-amber-200 mt-1">ℹ️ <b>${file.name}</b> ignorado automaticamente (tabela estatística de famílias do IBGE).</div>`;
+          continue;
+        }
+
+        logBox.innerHTML += `<div class="text-slate-800 mt-1">📂 Lendo arquivo: <b>${file.name}</b></div>`;
+        await new Promise(r => setTimeout(r, 40));
+
+        try {
+          const buffer = await file.arrayBuffer();
+          const workbook = XLSX.read(new Uint8Array(buffer), { type: 'array' });
+
+          workbook.SheetNames.forEach(sheetName => {
+            const sn = normalizar(sheetName);
+            if (sn === "MENU" || sn === "CAPA" || sn === "LEIA-ME" || sn === "NOTAS" || sn === "INDICE" || sn === "APRESENTACAO" || sn.includes("FAMILIA")) return;
+
+            const sheet = workbook.Sheets[sheetName];
+            const matriz = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+            if (matriz.length < 5) return;
+
+            let linhaInicioDados = -1;
+            let colCodPai = -1, colDescPai = -1, colUnidPai = -1, colGrupo = -1;
+            let colTipoFilho = -1, colCodFilho = -1, colDescFilho = -1, colUnidFilho = -1, colCoefUnico = -1, colPrecoUnico = -1;
+            let mapaColunasUF = {};
+
+            for (let r = 0; r < Math.min(22, matriz.length - 3); r++) {
+              const numCols = Math.max(matriz[r].length, (matriz[r+1]||[]).length, (matriz[r+2]||[]).length, (matriz[r+3]||[]).length);
+              const cabCombinado = [];
+              for (let c = 0; c < numCols; c++) {
+                const t0 = normalizar(matriz[r]?.[c]);
+                const t1 = normalizar(matriz[r+1]?.[c]);
+                const t2 = normalizar(matriz[r+2]?.[c]);
+                const t3 = normalizar(matriz[r+3]?.[c]);
+                cabCombinado.push(`${t0} | ${t1} | ${t2} | ${t3}`);
+              }
+
+              let idxPai = cabCombinado.findIndex(txt =>
+                txt.includes("CODIGO DA COMPOSICAO") ||
+                txt.includes("COD. DA COMPOSICAO") ||
+                txt.includes("CODIGO COMPOSICAO") ||
+                txt.includes("CODIGO DO INSUMO")
+              );
+
+              if (idxPai === -1) {
+                idxPai = cabCombinado.findIndex(txt =>
+                  !txt.includes("CLASSE") && !txt.includes("GRUPO") && !txt.includes("SIPCI") && !txt.includes("ITEM") &&
+                  (txt.includes("CODIGO") || txt.split('|').some(p => p.trim() === "COD"))
+                );
+              }
+
+              if (idxPai !== -1) {
+                colCodPai = idxPai;
+                colGrupo = cabCombinado.findIndex(txt => txt.includes("GRUPO") || txt.includes("CLASSE") || txt.includes("MACROCLASSE"));
+
+                colTipoFilho = cabCombinado.findIndex((txt, i) => i > colCodPai && (txt.includes("TIPO ITEM") || txt.includes("TIPO DE ITEM") || txt.includes("TIPO DO ITEM")));
+                colCodFilho = cabCombinado.findIndex((txt, i) => i > colCodPai && (txt.includes("CODIGO DO ITEM") || txt.includes("CODIGO ITEM") || txt.includes("COD. ITEM") || txt.includes("COD. DO ITEM")));
+
+                if (colCodFilho === -1 && colTipoFilho !== -1) {
+                  colCodFilho = cabCombinado.findIndex((txt, i) => i > colTipoFilho && (txt.includes("CODIGO") || txt.includes("ITEM")));
+                }
+
+                const limiteColunaPai = colTipoFilho !== -1 ? colTipoFilho : (colCodFilho !== -1 ? colCodFilho : numCols);
+
+                colDescPai = cabCombinado.findIndex((txt, i) => i > colCodPai && i < limiteColunaPai && i !== colGrupo && txt.includes("DESCRICAO"));
+                if (colDescPai === -1) colDescPai = cabCombinado.findIndex((txt, i) => i !== colGrupo && txt.includes("DESCRICAO"));
+
+                colUnidPai = cabCombinado.findIndex((txt, i) => i > colCodPai && i < limiteColunaPai && (txt.includes("UNIDADE") || txt.split('|').some(p => p.trim() === "UNID" || p.trim() === "UND" || p.trim() === "UN" || p.trim() === "UNID.")));
+
+                if (colCodFilho !== -1) {
+                  colDescFilho = cabCombinado.findIndex((txt, i) => i > colCodFilho && txt.includes("DESCRICAO"));
+                  colUnidFilho = cabCombinado.findIndex((txt, i) => i > colCodFilho && (txt.includes("UNIDADE") || txt.split('|').some(p => p.trim() === "UNID" || p.trim() === "UND" || p.trim() === "UN" || p.trim() === "UNID.")));
+                }
+
+                LISTA_UFS.forEach(sigla => {
+                  for (let c = 0; c < numCols; c++) {
+                    if (c === colCodPai || c === colDescPai || c === colUnidPai) continue;
+                    const partes = [
+                      normalizar(matriz[r]?.[c]),
+                      normalizar(matriz[r+1]?.[c]),
+                      normalizar(matriz[r+2]?.[c]),
+                      normalizar(matriz[r+3]?.[c])
+                    ];
+                    const achouSigla = partes.some(p => p === sigla || p === `CUSTO ${sigla}` || p === `PRECO ${sigla}` || p === `${sigla} (R$)` || p.startsWith(`${sigla} -`));
+                    if (achouSigla && mapaColunasUF[sigla] === undefined) {
+                      const textoColAtual = partes.join(' ');
+                      if (textoColAtual.includes("%") || textoColAtual.includes("VINCULO") || textoColAtual.includes("ORIGEM")) {
+                        const textoColSeguinte = [normalizar(matriz[r]?.[c+1]), normalizar(matriz[r+1]?.[c+1]), normalizar(matriz[r+2]?.[c+1]), normalizar(matriz[r+3]?.[c+1])].join(' ');
+                        if (textoColSeguinte.includes("CUSTO") || textoColSeguinte.includes("PRECO") || textoColSeguinte.includes("R$")) {
+                          mapaColunasUF[sigla] = c + 1;
+                        } else {
+                          mapaColunasUF[sigla] = c - 1;
+                        }
+                      } else {
+                        mapaColunasUF[sigla] = c;
+                      }
+                    }
+                  }
+                });
+
+                colCoefUnico = cabCombinado.findIndex(txt => txt.includes("COEFICIENTE") || txt.includes("FATOR") || txt.includes("CONSUMO"));
+                colPrecoUnico = cabCombinado.findIndex((txt, i) => i > colCodPai && !txt.includes("%") && (txt.includes("CUSTO TOTAL") || txt.includes("PRECO UNITARIO") || txt.includes("CUSTO UNITARIO") || txt.includes("VALOR UNITARIO") || txt.includes("MEDIANA")));
+
+                for (let d = r + 1; d < Math.min(r + 8, matriz.length); d++) {
+                  if (extrairCodigoLimpo(matriz[d]?.[colCodPai]) !== "" || (colCodFilho !== -1 && extrairCodigoLimpo(matriz[d]?.[colCodFilho]) !== "")) {
+                    linhaInicioDados = d;
+                    break;
+                  }
+                }
+                if (linhaInicioDados !== -1) break;
+              }
+            }
+
+            if (linhaInicioDados === -1) return;
+
+            const ufsDetectadas = Object.keys(mapaColunasUF);
+            const ehDesonerado = sn.includes("CSD") || sn.includes("CAD") || sn.includes("ISD") || (sn.includes("DESONERADO") && !sn.includes("NAO") && !sn.includes("SEM"));
+            const ehAbaMaoDeObra = nomeArq.includes("MAO_DE_OBRA") || sn.includes("MAO DE OBRA");
+
+            const ehAbaInsumo =
+              ehAbaMaoDeObra ||
+              sn === "ISD" || sn === "ISND" || sn === "ISE" ||
+              sn.startsWith("ISD ") || sn.startsWith("ISND ") || sn.startsWith("ISE ") ||
+              (sn.includes("INSUMO") && !sn.includes("COMPOSICAO") && !sn.includes("ANALITIC"));
+
+            const ehAbaManutencao = nomeArq.includes("MANUTEN") || sn.includes("MANUTEN");
+            const ehAbaAnalitica = sn === "CAD" || sn === "CAND" || sn === "CAE" || sn.includes("ANALITIC") || colCodFilho !== -1;
+
+            const nomeAbaTraduzido = traduzirSiglaAbaCaixa(sheetName);
+            const origemDetalhada = `${file.name} ▸ ${nomeAbaTraduzido}`;
+            let contadorLinhasAba = 0;
+            let contadorFilhosAba = 0;
+            let ultimoCodigoPaiAtivo = "";
+            let ultimaDescPaiAtiva = "";
+            let ultimaUnidPaiAtiva = "UN";
+            let ultimoGrupoAtivo = sheetName;
+
+            if (ufsDetectadas.length > 0 && !ehAbaAnalitica) {
+              ufsDetectadas.forEach(ufSigla => {
+                const colAtual = mapaColunasUF[ufSigla];
+                let qtdIgualAUmOuTexto = 0;
+                let qtdPreçosVariadosSeguinte = 0;
+                let qtdPreçosVariadosAnterior = 0;
+                for (let testeR = linhaInicioDados; testeR < Math.min(linhaInicioDados + 20, matriz.length); testeR++) {
+                  const vAtual = matriz[testeR]?.[colAtual];
+                  const vSeg = matriz[testeR]?.[colAtual + 1];
+                  const vAnt = matriz[testeR]?.[colAtual - 1];
+                  const nAtual = converterNumeroBR(vAtual);
+                  const nSeg = converterNumeroBR(vSeg);
+                  const nAnt = converterNumeroBR(vAnt);
+                  if (nAtual === 1 || nAtual === 100 || (typeof vAtual === 'string' && isNaN(Number(vAtual.replace(',','.'))))) {
+                    qtdIgualAUmOuTexto++;
+                  }
+                  if (nSeg > 1 && nSeg !== 100) qtdPreçosVariadosSeguinte++;
+                  if (nAnt > 1 && nAnt !== 100) qtdPreçosVariadosAnterior++;
+                }
+                if (qtdIgualAUmOuTexto >= 8) {
+                  if (qtdPreçosVariadosSeguinte >= 5) mapaColunasUF[ufSigla] = colAtual + 1;
+                  else if (qtdPreçosVariadosAnterior >= 5) mapaColunasUF[ufSigla] = colAtual - 1;
+                }
+              });
+            }
+
+            for (let r = linhaInicioDados; r < matriz.length; r++) {
+              const row = matriz[r];
+              let codPai = extrairCodigoLimpo(row[colCodPai]);
+              let descPai = colDescPai !== -1 ? String(row[colDescPai] || "").trim() : "";
+              let unidPai = colUnidPai !== -1 ? String(row[colUnidPai] || "").trim() : "";
+              let grupoPai = colGrupo !== -1 ? String(row[colGrupo] || "").trim() : "";
+
+              const codFilho = colCodFilho !== -1 ? extrairCodigoLimpo(row[colCodFilho]) : "";
+
+              if (!codPai && codFilho && ultimoCodigoPaiAtivo) {
+                codPai = ultimoCodigoPaiAtivo;
+                descPai = ultimaDescPaiAtiva;
+                unidPai = ultimaUnidPaiAtiva;
+                grupoPai = ultimoGrupoAtivo;
+              }
+
+              if (!codPai) continue;
+
+              if (descPai) ultimaDescPaiAtiva = descPai;
+              if (unidPai) ultimaUnidPaiAtiva = unidPai;
+              if (grupoPai) ultimoGrupoAtivo = grupoPai;
+              ultimoCodigoPaiAtivo = codPai;
+
+              const valoresPorUF = {};
+              let algumValorPositivo = false;
+              if (ufsDetectadas.length > 0) {
+                ufsDetectadas.forEach(ufSigla => {
+                  const val = converterNumeroBR(row[mapaColunasUF[ufSigla]]);
+                  if (val > 0) {
+                    valoresPorUF[ufSigla] = val;
+                    algumValorPositivo = true;
+                  }
+                });
+              } else {
+                const colUnica = (codFilho && colCoefUnico !== -1) ? colCoefUnico : colPrecoUnico;
+                if (colUnica !== -1) {
+                  const val = converterNumeroBR(row[colUnica]);
+                  if (val > 0) {
+                    valoresPorUF[ufManual] = val;
+                    valoresPorUF["PADRAO"] = val;
+                    algumValorPositivo = true;
+                  }
+                }
+              }
+
+              if (ehAbaInsumo && !codFilho) {
+                const naturezaIns = ehAbaMaoDeObra ? "MAO_DE_OBRA" : "INSUMO";
+                const fonteIns = ehAbaMaoDeObra ? "SINAPI-M.O." : "SINAPI-INSUMO";
+
+                if (!mapaGlobalInsumos.has(codPai)) {
+                  mapaGlobalInsumos.set(codPai, {
+                    chave_unica: `INS_${codPai}`,
+                    natureza: naturezaIns,
+                    fonte: fonteIns,
+                    origem_detalhada: origemDetalhada,
+                    codigo: codPai,
+                    grupo: grupoPai || (ehAbaMaoDeObra ? "Mão de Obra" : "Insumo / Material"),
+                    descricao: descPai || `Insumo ${codPai}`,
+                    desc: descPai || `Insumo ${codPai}`,
+                    unidade: unidPai || "UN",
+                    unid: unidPai || "UN",
+                    bdi_sugerido: naturezaIns === "INSUMO" ? "diferenciado" : "padrao",
+                    precos_nd: {},
+                    precos_d: {},
+                    insumos: []
+                  });
+                  contadorLinhasAba++;
+                }
+
+                const objIns = mapaGlobalInsumos.get(codPai);
+                if (descPai && objIns.descricao.startsWith("Insumo ")) {
+                  objIns.descricao = descPai;
+                  objIns.desc = descPai;
+                }
+                if (unidPai && objIns.unidade === "UN") {
+                  objIns.unidade = unidPai;
+                  objIns.unid = unidPai;
+                }
+                Object.entries(valoresPorUF).forEach(([u, v]) => {
+                  if (v !== 1) {
+                    if (ehDesonerado) objIns.precos_d[u] = v;
+                    else objIns.precos_nd[u] = v;
+                  }
+                });
+                continue;
+              }
+
+              const prefixoChave = ehAbaManutencao ? "MANUT" : "COMP";
+              const chaveComp = `${prefixoChave}_${codPai}`;
+
+              if (!mapaGlobalComposicoes.has(chaveComp)) {
+                mapaGlobalComposicoes.set(chaveComp, {
+                  chave_unica: chaveComp,
+                  natureza: ehAbaManutencao ? "MANUTENCAO" : "COMPOSICAO",
+                  fonte: ehAbaManutencao ? "SINAPI-MANUT" : "SINAPI",
+                  origem_detalhada: origemDetalhada,
+                  codigo: codPai,
+                  grupo: grupoPai || sheetName,
+                  descricao: descPai || `Composição ${codPai}`,
+                  unidade: unidPai || "UN",
+                  precos_nd: {},
+                  precos_d: {},
+                  bdi_sugerido: "padrao",
+                  insumos: []
+                });
+                contadorLinhasAba++;
+              }
+
+              const compObj = mapaGlobalComposicoes.get(chaveComp);
+              if (descPai && (compObj.descricao.startsWith("Composição ") || compObj.descricao.length < descPai.length)) {
+                compObj.descricao = descPai;
+              }
+              if (unidPai && compObj.unidade === "UN") {
+                compObj.unidade = unidPai;
+              }
+
+              if (!codFilho && !ehAbaAnalitica) {
+                if (algumValorPositivo) {
+                  Object.entries(valoresPorUF).forEach(([u, v]) => {
+                    if (v !== 1) {
+                      if (ehDesonerado) compObj.precos_d[u] = v;
+                      else compObj.precos_nd[u] = v;
+                    }
+                  });
+                }
+              } else if (codFilho && codFilho !== codPai) {
+                const descFilho = colDescFilho !== -1 ? String(row[colDescFilho] || "").trim() : "";
+                const unidFilho = colUnidFilho !== -1 ? String(row[colUnidFilho] || "").trim() : "";
+                const tipoFilho = colTipoFilho !== -1 ? String(row[colTipoFilho] || "ITEM").trim().toUpperCase() : "ITEM";
+                const coefDireto = colCoefUnico !== -1 ? converterNumeroBR(row[colCoefUnico]) : 0;
+
+                if (coefDireto <= 0 && !algumValorPositivo) continue;
+
+                let filhoExistente = compObj.insumos.find(f => String(f.codigo) === String(codFilho));
+                if (!filhoExistente) {
+                  filhoExistente = {
+                    tipo: tipoFilho || "INSUMO",
+                    codigo: codFilho,
+                    desc: descFilho || "Item da composição",
+                    unid: unidFilho || "UN",
+                    coef: coefDireto || 0,
+                    coefs: {},
+                    unit: 0,
+                    precos_nd: {},
+                    precos_d: {}
+                  };
+                  compObj.insumos.push(filhoExistente);
+                  contadorFilhosAba++;
+                }
+
+                if (descFilho && filhoExistente.desc === "Item da composição") filhoExistente.desc = descFilho;
+                if (unidFilho && filhoExistente.unid === "UN") filhoExistente.unid = unidFilho;
+                if (coefDireto > 0) {
+                  filhoExistente.coef = coefDireto;
+                  filhoExistente.coefs["PADRAO"] = coefDireto;
+                }
+
+                if (ehAbaAnalitica && coefDireto === 0) {
+                  Object.entries(valoresPorUF).forEach(([u, v]) => {
+                    filhoExistente.coefs[u] = v;
+                  });
+                }
+              }
+            }
+
+            if (contadorLinhasAba > 0 || contadorFilhosAba > 0) {
+              logBox.innerHTML += `<div class="text-emerald-700">  ✓ <b>${nomeAbaTraduzido}</b>: ${contadorLinhasAba.toLocaleString('pt-BR')} itens ${contadorFilhosAba > 0 ? `+ ${contadorFilhosAba.toLocaleString('pt-BR')} vínculos analíticos` : ''}.</div>`;
+            }
+          });
+        } catch (err) {
+          logBox.innerHTML += `<div class="text-rose-600">  ✗ Erro em ${file.name}: ${err.message}</div>`;
+        }
+      }
+
+      const listaComposicoes = Array.from(mapaGlobalComposicoes.values()).map(comp => {
+        (comp.insumos || []).forEach(ins => {
+          const cadIns = mapaGlobalInsumos.get(String(ins.codigo));
+          const cadSub = mapaGlobalComposicoes.get(`COMP_${ins.codigo}`) || mapaGlobalComposicoes.get(`MANUT_${ins.codigo}`);
+          if ((!ins.desc || ins.desc === "Item da composição") && (cadIns || cadSub)) {
+            ins.desc = cadIns ? cadIns.descricao : cadSub.descricao;
+          }
+          if ((!ins.unid || ins.unid === "UN") && (cadIns || cadSub)) {
+            ins.unid = cadIns ? cadIns.unidade : cadSub.unidade;
+          }
+        });
+        return comp;
+      });
+
+      const listaInsumos = Array.from(mapaGlobalInsumos.values());
+      baseComposicoes = [...listaComposicoes, ...listaInsumos];
+
+      const inicial = listaComposicoes.find(c => c.insumos && c.insumos.length > 0) || listaComposicoes[0] || baseComposicoes[0] || null;
+      itemSelecionado = inicial;
+      abasInspecao = inicial ? [inicial] : [];
+
+      await salvarBaseNoNavegador();
+      atualizarVisualizacao();
+      recalcularOrcamento();
+
+      document.getElementById('textoResumoUpload').textContent =
+        `✅ Sucesso! ${listaComposicoes.length.toLocaleString('pt-BR')} Composições e ${listaInsumos.length.toLocaleString('pt-BR')} Insumos salvos permanentemente!`;
+      document.getElementById('subtextoResumoUpload').textContent =
+        `Clique no botão roxo abaixo para baixar o arquivo comprimido base_sinapi_2rf.json.gz (< 4 MB) pronto para o GitHub.`;
+      bannerFim.classList.remove('hidden');
+      bannerFim.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    async function limparBaseCarregada() {
+      if (!confirm("Deseja zerar toda a base salva no navegador?")) return;
+      mapaGlobalComposicoes.clear();
+      mapaGlobalInsumos.clear();
+      baseComposicoes = [];
+      abasInspecao = [];
+      itemSelecionado = null;
+      try {
+        const db = await abrirIndexedDB();
+        db.transaction("store", "readwrite").objectStore("store").delete("base_sinapi_principal");
+      } catch (e) {}
+      atualizarVisualizacao();
+    }
+
+    function abrirModalCPU(itemBase) {
+      document.getElementById('modalCPU').classList.remove('hidden');
+      document.getElementById('modalCPU').classList.add('flex');
+      const container = document.getElementById('listaInsumosCPU');
+      container.innerHTML = '';
+
+      const uf = obterUFAtiva();
+      const dataBase = obterDataBaseAtiva();
+      const regime = document.getElementById('cfgRegime').value;
+
+      if (itemBase) {
+        const novoCod = gerarProximoCodigoCPU(itemBase.codigo);
+        const fonteOrig = itemBase.fonte || "SINAPI";
+        document.getElementById('tituloModalCPU').textContent = `Clonar Composição para CPU Referenciada: ${fonteOrig} ${itemBase.codigo}`;
+        document.getElementById('cpuFonte').value = `CPU (REF. ${fonteOrig})`;
+        document.getElementById('cpuCodigo').value = novoCod;
+        document.getElementById('cpuOrigemRef').value = `REF. ${fonteOrig} ${itemBase.codigo} - BASE ${dataBase} (${uf})`;
+        document.getElementById('cpuUnidade').value = itemBase.unidade;
+        document.getElementById('cpuDescricao').value =
+          `${itemBase.descricao} - (CPU ADAPTADA - REF. ${fonteOrig} ${itemBase.codigo} - BASE ${dataBase} - ${uf})`;
+
+        if (itemBase.insumos && itemBase.insumos.length > 0) {
+          itemBase.insumos.forEach(ins => {
+            let unitVal = obterPrecoInsumoFilho(ins, uf, regime);
+            if (unitVal <= 0) {
+              const ref = buscarPrecoReferenciaOutrasUFs(ins.codigo, regime);
+              if (ref) unitVal = ref.valor;
+            }
+            adicionarLinhaInsumoCPU({
+              tipo: ins.tipo,
+              codigo: ins.codigo,
+              desc: ins.desc,
+              unid: ins.unid,
+              coef: obterCoeficienteFilhoPorUF(ins, uf),
+              unit: unitVal
+            });
+          });
+        } else {
+          adicionarLinhaInsumoCPU({
+            tipo: "BASE",
+            codigo: itemBase.codigo,
+            desc: itemBase.descricao,
+            unid: itemBase.unidade,
+            coef: 1,
+            unit: obterPrecoItemPorUF(itemBase, uf, regime)
+          });
+        }
+      } else {
+        document.getElementById('tituloModalCPU').textContent = "Criar Composição Própria (CPU do Zero)";
+        document.getElementById('cpuFonte').value = "CPU-PRÓPRIA";
+        document.getElementById('cpuCodigo').value = `CPU-${String(baseComposicoes.filter(x => x.natureza === 'CPU').length + 1).padStart(3, '0')}`;
+        document.getElementById('cpuOrigemRef').value = `Elaboração Própria (${dataBase} - ${uf})`;
+        document.getElementById('cpuUnidade').value = "UN";
+        document.getElementById('cpuDescricao').value = "";
+        adicionarLinhaInsumoCPU();
+      }
+    }
+
+    function fecharModalCPU() {
+      document.getElementById('modalCPU').classList.add('hidden');
+      document.getElementById('modalCPU').classList.remove('flex');
+    }
+
+    function adicionarLinhaInsumoCPU(dados = null) {
+      const container = document.getElementById('listaInsumosCPU');
+      const div = document.createElement('div');
+      div.className = "grid grid-cols-12 gap-1.5 items-center text-xs";
+      div.innerHTML = `
+        <input type="text" value="${dados?.tipo || 'INSUMO'}" class="col-span-2 bg-slate-50 border border-slate-300 rounded px-1.5 py-1 text-slate-800 cpu-ins-tipo">
+        <input type="text" value="${dados?.codigo || 'INS-01'}" class="col-span-2 bg-white border border-slate-300 rounded px-1.5 py-1 text-slate-900 font-mono cpu-ins-cod">
+        <input type="text" value="${dados?.desc || ''}" placeholder="Descrição do Insumo / Profissional" class="col-span-4 bg-white border border-slate-300 rounded px-1.5 py-1 text-slate-900 cpu-ins-desc">
+        <input type="text" value="${dados?.unid || 'UN'}" class="col-span-1 bg-white border border-slate-300 rounded px-1.5 py-1 text-slate-900 text-center cpu-ins-unid">
+        <input type="number" step="0.0001" value="${dados?.coef !== undefined ? dados.coef : 1}" class="col-span-1 bg-white border border-slate-300 rounded px-1.5 py-1 text-slate-900 text-right cpu-ins-coef">
+        <input type="number" step="0.01" value="${dados?.unit !== undefined ? dados.unit : 0}" class="col-span-1 bg-white border border-slate-300 rounded px-1.5 py-1 text-slate-900 text-right cpu-ins-unit">
+        <button type="button" onclick="this.parentElement.remove()" class="col-span-1 text-rose-600 font-bold text-center">&times;</button>
+      `;
+      container.appendChild(div);
+    }
+
+    function salvarCPU() {
+      const uf = obterUFAtiva();
+      const fonte = document.getElementById('cpuFonte').value.trim() || "CPU-PRÓPRIA";
+      const codigo = document.getElementById('cpuCodigo').value.trim();
+      const grupo = document.getElementById('cpuOrigemRef').value.trim();
+      const unidade = document.getElementById('cpuUnidade').value.trim().toUpperCase() || "UN";
+      const descricao = document.getElementById('cpuDescricao').value.trim();
+
+      if (!descricao) return alert("Informe a descrição da CPU.");
+
+      const linhas = document.querySelectorAll('#listaInsumosCPU > div');
+      const insumos = [];
+      let custoTotal = 0;
+
+      linhas.forEach(row => {
+        const tipo = row.querySelector('.cpu-ins-tipo').value;
+        const cod = row.querySelector('.cpu-ins-cod').value;
+        const desc = row.querySelector('.cpu-ins-desc').value;
+        const unid = row.querySelector('.cpu-ins-unid').value;
+        const coef = parseFloat(row.querySelector('.cpu-ins-coef').value) || 0;
+        const unit = parseFloat(row.querySelector('.cpu-ins-unit').value) || 0;
+        custoTotal += coef * unit;
+        insumos.push({ tipo, codigo: cod, desc, unid, coef, coefs: { [uf]: coef, PADRAO: coef }, unit, precos_nd: { [uf]: unit, PADRAO: unit }, precos_d: { [uf]: unit, PADRAO: unit } });
+      });
+
+      const valorFinal = truncar2Casas(custoTotal);
+      const novaCPU = {
+        chave_unica: `COMP_${codigo}`,
+        natureza: "CPU",
+        fonte,
+        origem_detalhada: `Composição Própria (${grupo})`,
+        codigo,
+        grupo,
+        descricao,
+        unidade,
+        precos_nd: { [uf]: valorFinal, PADRAO: valorFinal },
+        precos_d: { [uf]: valorFinal, PADRAO: valorFinal },
+        bdi_sugerido: "padrao",
+        insumos
+      };
+
+      baseComposicoes.unshift(novaCPU);
+      mapaGlobalComposicoes.set(`COMP_${codigo}`, novaCPU);
+      itemSelecionado = novaCPU;
+      abasInspecao.push(novaCPU);
+      salvarBaseNoNavegador();
+      fecharModalCPU();
+      atualizarVisualizacao();
+    }
+
+    function adicionarAoOrcamento() {
+      if (!itemSelecionado) return;
+      const uf = obterUFAtiva();
+      const regime = document.getElementById('cfgRegime').value;
+      const precoAtual = obterPrecoItemPorUF(itemSelecionado, uf, regime);
+
+      if (precoAtual <= 0) {
+        alert(`Atenção: Esta composição possui insumo sem preço na UF ${uf}. Digite o valor cotado na linha vermelha e clique em "⚡ Gerar CPU c/ Cotação" para criar a CPU referenciada antes de adicionar ao orçamento!`);
+        return;
+      }
+
+      const qtd = parseFloat(document.getElementById('addQuantidade').value) || 1;
+      const equipes = parseInt(document.getElementById('addEquipes')?.value, 10) || 1;
+      const tipoBdi = document.getElementById('addTipoBdi').value;
+
+      itensOrcamento.push({
+        id: itensOrcamento.length + 1,
+        composicao: itemSelecionado,
+        quantidade: qtd,
+        equipes: equipes,
+        tipoBdi: tipoBdi
+      });
+      recalcularOrcamento();
+    }
+
+    function removerItemOrcamento(index) {
+      itensOrcamento.splice(index, 1);
+      itensOrcamento.forEach((it, idx) => it.id = idx + 1);
+      recalcularOrcamento();
+    }
+
+    function alterarQtdItem(index, novaQtd) {
+      itensOrcamento[index].quantidade = parseFloat(novaQtd) || 0;
+      recalcularOrcamento();
+    }
+
+    function alterarEquipesItem(index, novasEquipes) {
+      itensOrcamento[index].equipes = Math.max(1, parseInt(novasEquipes, 10) || 1);
+      recalcularOrcamento();
+    }
+
+    function alterarBdiItem(index, novoTipo) {
+      itensOrcamento[index].tipoBdi = novoTipo;
+      recalcularOrcamento();
+    }
+
+    function limparOrcamento() {
+      itensOrcamento = [];
+      recalcularOrcamento();
+    }
+
+    function recalcularOrcamento() {
+      const tbody = document.getElementById('tabelaOrcamentoBody');
+      const uf = obterUFAtiva();
+      const regime = document.getElementById('cfgRegime').value;
+      const bdiPadrao = parseFloat(document.getElementById('cfgBdiPadrao').value) || 0;
+      const bdiDif = parseFloat(document.getElementById('cfgBdiDif').value) || 0;
+      const jornada = obterParametrosJornada();
+
+      let somaSemBdi = 0;
+      let somaComBdi = 0;
+      let somaDiasSequenciais = 0;
+      let somaHomemHoraGlobal = 0;
+
+      if (itensOrcamento.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="14" class="py-8 text-center text-slate-400">Orçamento vazio. Pesquise uma composição à esquerda e clique em "+ Inserir no Orçamento & Cronograma".</td></tr>`;
+      } else {
+        tbody.innerHTML = itensOrcamento.map((item, idx) => {
+          const cUnit = obterPrecoItemPorUF(item.composicao, uf, regime);
+          const percBdi = item.tipoBdi === 'diferenciado' ? bdiDif : bdiPadrao;
+
+          const custoTotalSemBdi = truncar2Casas(cUnit * item.quantidade);
+          const precoUnitComBdi = truncar2Casas(cUnit * (1 + percBdi / 100));
+          const precoTotalComBdi = truncar2Casas(precoUnitComBdi * item.quantidade);
+
+          const dim = calcularDimensionamentoServico(item.composicao, uf, item.quantidade, item.equipes || 1);
+
+          somaSemBdi += custoTotalSemBdi;
+          somaComBdi += precoTotalComBdi;
+          somaDiasSequenciais += dim.diasDuracao;
+          somaHomemHoraGlobal += dim.totalHomemHora;
+
+          const resumoEquipeTooltip = dim.profissionais.map(p => `${p.qtdTotalAlocada}x ${p.nome} (${p.horasTotais.toFixed(1)}h)`).join(' + ');
+          const ehCPU = item.composicao.natureza === "CPU";
+
+          return `
+            <tr class="hover:bg-slate-50">
+              <td class="py-2 px-1.5 font-mono text-slate-500">1.${item.id}</td>
+              <td class="py-2 px-1.5 font-bold ${ehCPU ? 'text-indigo-700' : 'text-blue-700'}">${item.composicao.fonte}</td>
+              <td class="py-2 px-1.5 font-mono font-semibold text-slate-700">${item.composicao.codigo}</td>
+              <td class="py-2 px-1.5 text-slate-800 max-w-[190px] truncate" title="${item.composicao.descricao}">${item.composicao.descricao}</td>
+              <td class="py-2 px-1.5 text-center text-slate-500">${item.composicao.unidade}</td>
+              <td class="py-2 px-1.5 text-right">
+                <input type="number" step="0.01" value="${item.quantidade}" onchange="alterarQtdItem(${idx}, this.value)" class="w-16 bg-white border border-slate-300 rounded px-1 py-0.5 text-right text-slate-900 font-semibold">
+              </td>
+              <td class="py-2 px-1.5 text-center bg-indigo-50/40">
+                <input type="number" step="1" min="1" value="${item.equipes || 1}" onchange="alterarEquipesItem(${idx}, this.value)" title="${resumoEquipeTooltip || 'Sem M.O. horária'}" class="w-12 bg-white border border-indigo-300 rounded px-1 py-0.5 text-center text-indigo-900 font-bold">
+              </td>
+              <td class="py-2 px-1.5 text-right bg-indigo-50/40" title="${resumoEquipeTooltip}">
+                ${dim.temMaoDeObra
+                  ? `<span class="font-extrabold text-indigo-900 block">${dim.diasDuracao.toFixed(1)} d</span>
+                     <span class="text-[9px] text-indigo-700 block">${dim.semanasDuracao.toFixed(2)} sem (${dim.totalPessoasNaFrente} pess.)</span>`
+                  : `<span class="text-[10px] text-slate-400">Fornec.</span>`}
+              </td>
+              <td class="py-2 px-1.5 text-right text-slate-700">${formatarMoeda(cUnit)}</td>
+              <td class="py-2 px-1.5 text-right font-semibold text-slate-800">${formatarMoeda(custoTotalSemBdi)}</td>
+              <td class="py-2 px-1.5 text-center">
+                <select onchange="alterarBdiItem(${idx}, this.value)" class="bg-white border border-slate-300 rounded px-1 py-0.5 text-[10px] font-bold ${item.tipoBdi === 'diferenciado' ? 'text-amber-700' : 'text-emerald-700'}">
+                  <option value="padrao" ${item.tipoBdi === 'padrao' ? 'selected' : ''}>Padrão (${bdiPadrao}%)</option>
+                  <option value="diferenciado" ${item.tipoBdi === 'diferenciado' ? 'selected' : ''}>Dif. (${bdiDif}%)</option>
+                </select>
+              </td>
+              <td class="py-2 px-1.5 text-right font-bold text-amber-700">${formatarMoeda(precoUnitComBdi)}</td>
+              <td class="py-2 px-1.5 text-right font-extrabold text-emerald-700">${formatarMoeda(precoTotalComBdi)}</td>
+              <td class="py-2 px-1 text-center">
+                <button onclick="removerItemOrcamento(${idx})" class="text-rose-600 hover:text-rose-800 font-bold px-1">&times;</button>
+              </td>
+            </tr>
+          `;
+        }).join('');
+      }
+
+      const semanasTotaisSeq = (somaDiasSequenciais * jornada.horasDia) / jornada.horasSemana;
+      document.getElementById('totalCronogramaResumo').textContent = `${somaDiasSequenciais.toFixed(1)} dias úteis (${semanasTotaisSeq.toFixed(2)} sem.)`;
+      document.getElementById('totalHomemHoraResumo').textContent = `${somaHomemHoraGlobal.toFixed(1)} Hh totais (${jornada.label})`;
+
+      document.getElementById('totalSemBdi').textContent = formatarMoeda(somaSemBdi);
+      document.getElementById('totalValorBdi').textContent = formatarMoeda(somaComBdi - somaSemBdi);
+      document.getElementById('totalComBdi').textContent = formatarMoeda(somaComBdi);
+      salvarEstadoOrcamentoLocal();
+    }
+
+    function exportarExcel() {
+      if (itensOrcamento.length === 0) return alert("Adicione itens ao orçamento antes de exportar.");
+
+      const uf = obterUFAtiva();
+      const dataBase = obterDataBaseAtiva();
+      const regime = document.getElementById('cfgRegime').value;
+      const bdiPadrao = parseFloat(document.getElementById('cfgBdiPadrao').value) || 0;
+      const bdiDif = parseFloat(document.getElementById('cfgBdiDif').value) || 0;
+      const jornada = obterParametrosJornada();
+
+      const dadosOrcamento = [];
+      const dadosCronograma = [];
+      const dadosMemoriaAnalitica = [];
+
+      itensOrcamento.forEach(item => {
+        const cUnit = obterPrecoItemPorUF(item.composicao, uf, regime);
+        const percBdi = item.tipoBdi === 'diferenciado' ? bdiDif : bdiPadrao;
+        const custoTotalSemBdi = truncar2Casas(cUnit * item.quantidade);
+        const precoUnitComBdi = truncar2Casas(cUnit * (1 + percBdi / 100));
+        const precoTotalComBdi = truncar2Casas(precoUnitComBdi * item.quantidade);
+        const dim = calcularDimensionamentoServico(item.composicao, uf, item.quantidade, item.equipes || 1);
+
+        dadosOrcamento.push({
+          "ID": `1.${item.id}`,
+          "UF / Base": `${uf} (${dataBase})`,
+          "Fonte": item.composicao.fonte,
+          "Código": item.composicao.codigo,
+          "Descrição": item.composicao.descricao,
+          "Unidade": item.composicao.unidade,
+          "Quantidade": item.quantidade,
+          "Preço Unitário s/ BDI (R$)": cUnit,
+          "Custo Total s/ BDI (R$)": custoTotalSemBdi,
+          "BDI (%)": percBdi,
+          "Preço Unitário c/ BDI (R$)": precoUnitComBdi,
+          "Preço Total c/ BDI (R$)": precoTotalComBdi
+        });
+
+        dadosCronograma.push({
+          "ID": `1.${item.id}`,
+          "Código": item.composicao.codigo,
+          "Serviço": item.composicao.descricao,
+          "Unidade": item.composicao.unidade,
+          "Quantidade": item.quantidade,
+          "Regime Jornada": jornada.label,
+          "Frentes / Equipes Alocadas": item.equipes || 1,
+          "Total Pessoas na Frente": dim.totalPessoasNaFrente,
+          "Composição da Equipe": dim.profissionais.map(p => `${p.qtdTotalAlocada}x ${p.nome}`).join(" + ") || "Fornecimento",
+          "Esforço Total M.O. (Hh)": Number(dim.totalHomemHora.toFixed(2)),
+          "Horas de Relógio da Equipe (h)": Number(dim.horasDuracaoEquipe.toFixed(2)),
+          "Prazo Estimado (Dias Úteis)": Number(dim.diasDuracao.toFixed(2)),
+          "Prazo Estimado (Semanas)": Number(dim.semanasDuracao.toFixed(2))
+        });
+
+        (item.composicao.insumos || []).forEach(ins => {
+          const coef = obterCoeficienteFilhoPorUF(ins, uf);
+          const unit = obterPrecoInsumoFilho(ins, uf, regime);
+          dadosMemoriaAnalitica.push({
+            "ID Orçamento": `1.${item.id}`,
+            "Fonte Composição Pai": item.composicao.fonte,
+            "Código Composição Pai": item.composicao.codigo,
+            "Descrição Composição Pai": item.composicao.descricao,
+            "Tipo Item Filho": ins.tipo,
+            "Código Item Filho": ins.codigo,
+            "Descrição Item Filho": ins.desc,
+            "Unid.": ins.unid,
+            "Coeficiente": coef,
+            "Custo Unitário (R$)": unit,
+            "Subtotal na Composição (R$)": truncar2Casas(coef * unit)
+          });
+        });
+      });
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(dadosOrcamento), `Orcamento_${uf}`);
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(dadosCronograma), `Cronograma_Equipes_${uf}`);
+      if (dadosMemoriaAnalitica.length > 0) {
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(dadosMemoriaAnalitica), `Memoria_Analitica_CPUs`);
+      }
+      XLSX.writeFile(wb, `Orcamento_RFB_${uf}_${dataBase.replace('/','-')}.xlsx`);
+    }
+
+    window.onload = () => {
+      inicializarBancoDeDadosAutomatico();
+    };
+  </script>
+</body>
+</html>
